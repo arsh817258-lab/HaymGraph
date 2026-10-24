@@ -47,7 +47,7 @@
         // Visual styling configuration
         this.padding = { top: 28, right: 28, bottom: 28, left: 28 };
         this.handleRadius = 7.5;
-        this.hitRadius = 18;
+        this.hitRadius = 22;
 
         this._initCanvas();
         this._bindEvents();
@@ -381,7 +381,7 @@
     };
 
     /**
-     * Event binding for mouse/pointer interactions.
+     * Event binding for mouse, pointer, and touch interactions across macOS and Windows.
      */
     CurveBox.prototype._bindEvents = function () {
         var self = this;
@@ -389,22 +389,38 @@
 
         function getCanvasPoint(e) {
             var rect = canvas.getBoundingClientRect();
+            var scaleX = (rect.width > 0) ? (self.width / rect.width) : 1;
+            var scaleY = (rect.height > 0) ? (self.height / rect.height) : 1;
+
+            var clientX = e.clientX;
+            var clientY = e.clientY;
+
+            // Handle touch events on Mac trackpad or touch screens
+            if (clientX === undefined && e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else if (clientX === undefined && e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX;
+                clientY = e.changedTouches[0].clientY;
+            }
+
             return {
-                px: e.clientX - rect.left,
-                py: e.clientY - rect.top
+                px: ((clientX !== undefined ? clientX : 0) - rect.left) * scaleX,
+                py: ((clientY !== undefined ? clientY : 0) - rect.top) * scaleY
             };
         }
 
-        canvas.addEventListener('pointerdown', function (e) {
+        function onDown(e) {
             var pt = getCanvasPoint(e);
             var hit = self.hitTest(pt.px, pt.py);
 
             var now = Date.now();
-            if (hit && self.lastClickHandle === hit && (now - self.lastClickTime < 320)) {
+            if (hit && self.lastClickHandle === hit && (now - self.lastClickTime < 380)) {
                 // Double-click flatten: zero the handle's speed
                 self.flattenHandle(hit);
                 self.lastClickTime = 0;
                 self.lastClickHandle = null;
+                if (e.preventDefault) e.preventDefault();
                 return;
             }
 
@@ -414,12 +430,18 @@
             if (hit) {
                 self.activeHandle = hit;
                 self.isDragging = true;
-                canvas.setPointerCapture(e.pointerId);
+                if (e.preventDefault) e.preventDefault();
+
+                // Safely capture pointer if supported (without throwing on Mac CEF)
+                if (e.pointerId !== undefined && canvas.setPointerCapture) {
+                    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+                }
+
                 self.render();
             }
-        });
+        }
 
-        canvas.addEventListener('pointermove', function (e) {
+        function onMove(e) {
             var pt = getCanvasPoint(e);
 
             if (!self.isDragging) {
@@ -432,18 +454,20 @@
                 return;
             }
 
+            if (e.preventDefault) e.preventDefault();
+
             // Dragging handle
             var norm = self.toNormalized(pt.px, pt.py);
             var handleIdx = self.activeHandle;
 
             // Apply magnetic snapping (Shift bypasses)
             var snapResult = HaymMath.snapHandle(handleIdx, norm.x, norm.y, {
-                bypassShift: e.shiftKey,
+                bypassShift: !!e.shiftKey,
                 thresholdX: 0.025,
                 thresholdY: 0.035
             });
 
-            self.currentSnapInfo = snapResult.snappedX || snapResult.snappedY ? snapResult : null;
+            self.currentSnapInfo = (snapResult.snappedX || snapResult.snappedY) ? snapResult : null;
 
             var newX = snapResult.x;
             var newY = snapResult.y;
@@ -458,7 +482,7 @@
                     self.curve.x2 = m2.x;
                     self.curve.y2 = m2.y;
                 } else if (e.ctrlKey || e.metaKey) {
-                    // Ctrl-mirror: diagonal reflection (xOpposite = 1 - ySource, yOpposite = 1 - xSource)
+                    // Ctrl/Cmd-mirror: diagonal reflection (xOpposite = 1 - ySource, yOpposite = 1 - xSource)
                     var c2 = HaymMath.mirrorDiagonalHandle(1, self.curve.x1, self.curve.y1);
                     self.curve.x2 = c2.x;
                     self.curve.y2 = c2.y;
@@ -473,7 +497,7 @@
                     self.curve.x1 = m1.x;
                     self.curve.y1 = m1.y;
                 } else if (e.ctrlKey || e.metaKey) {
-                    // Ctrl-mirror: diagonal reflection (xOpposite = 1 - ySource, yOpposite = 1 - xSource)
+                    // Ctrl/Cmd-mirror: diagonal reflection (xOpposite = 1 - ySource, yOpposite = 1 - xSource)
                     var c1 = HaymMath.mirrorDiagonalHandle(2, self.curve.x2, self.curve.y2);
                     self.curve.x1 = c1.x;
                     self.curve.y1 = c1.y;
@@ -483,21 +507,41 @@
             self.updateViewportTargets();
             self.render();
             self._notifyChange(handleIdx);
-        });
+        }
 
-        function endDrag(e) {
+        function onEnd(e) {
             if (self.isDragging) {
                 self.isDragging = false;
                 self.activeHandle = null;
                 self.currentSnapInfo = null;
-                try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+                if (e && e.pointerId !== undefined && canvas.releasePointerCapture) {
+                    try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}
+                }
                 self.updateViewportTargets();
                 self.render();
             }
         }
 
-        canvas.addEventListener('pointerup', endDrag);
-        canvas.addEventListener('pointercancel', endDrag);
+        // Pointer Events (Modern Chromium)
+        canvas.addEventListener('pointerdown', onDown);
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onEnd);
+        window.addEventListener('pointercancel', onEnd);
+
+        // Fallback Mouse Events for macOS CEF builds
+        canvas.addEventListener('mousedown', function (e) {
+            if (!self.isDragging) onDown(e);
+        });
+        window.addEventListener('mousemove', function (e) {
+            if (self.isDragging) onMove(e);
+        });
+        window.addEventListener('mouseup', onEnd);
+
+        // Fallback Touch Events for trackpad gesture support
+        canvas.addEventListener('touchstart', onDown, { passive: false });
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onEnd);
+        window.addEventListener('touchcancel', onEnd);
 
         window.addEventListener('resize', function () {
             self.resize();

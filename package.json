@@ -1,6 +1,6 @@
 {
   "name": "haymgraph",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "After Effects Keyframe Curve Box & Easing CEP Extension",
   "main": "index.html",
   "scripts": {

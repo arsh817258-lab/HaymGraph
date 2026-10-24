@@ -54,15 +54,19 @@
         // 2. Proactively reload latest ExtendScript host engine into AE memory
         reloadHostScript();
 
-        // 2. Register key interest for Enter, Ctrl, Alt, Shift, Copy (C), Paste (V) in CEP
+        // 2. Register key interest for Enter, Ctrl, Alt/Option, Shift, Copy (C), Paste (V) in CEP (Win & Mac)
         try {
             var keyEventsInterest = JSON.stringify([
                 { keyCode: 13 }, // Enter
                 { keyCode: 17, ctrlKey: true }, // Ctrl
-                { keyCode: 18, altKey: true },  // Alt
+                { keyCode: 18, altKey: true },  // Alt / Option
                 { keyCode: 16, shiftKey: true }, // Shift
                 { keyCode: 67, ctrlKey: true }, // Ctrl+C
-                { keyCode: 86, ctrlKey: true }  // Ctrl+V
+                { keyCode: 86, ctrlKey: true }, // Ctrl+V
+                { keyCode: 67, metaKey: true }, // Cmd+C (macOS)
+                { keyCode: 86, metaKey: true }, // Cmd+V (macOS)
+                { keyCode: 91, metaKey: true }, // Left Cmd (macOS)
+                { keyCode: 93, metaKey: true }  // Right Cmd (macOS)
             ]);
             csInterface.registerKeyEventsInterest(keyEventsInterest);
         } catch (e) {}

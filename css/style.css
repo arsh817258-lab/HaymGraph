@@ -214,6 +214,8 @@ body {
     width: 100%;
     min-height: 220px;
     cursor: default;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .haym-curve-canvas {
@@ -221,6 +223,9 @@ body {
     width: 100%;
     height: 100%;
     touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
 }
 
 /* Floating Viewport Badges */
