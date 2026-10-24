@@ -432,10 +432,8 @@
                     self.curve.x2 = m2.x;
                     self.curve.y2 = m2.y;
                 } else if (e.ctrlKey || e.metaKey) {
-                    // Ctrl-mirror: reflect across diagonal (y = x)
-                    var c2 = HaymMath.mirrorDiagonalHandle(1, self.curve.x1, self.curve.y1);
-                    self.curve.x2 = c2.x;
-                    self.curve.y2 = c2.y;
+                    // Ctrl-mirror: mirror ONLY X position (coming closer / pulling apart)
+                    self.curve.x2 = HaymMath.mirrorXHandle(1, self.curve.x1);
                 }
             } else if (handleIdx === 2) {
                 self.curve.x2 = Math.round(newX * 1000) / 1000;
@@ -447,10 +445,8 @@
                     self.curve.x1 = m1.x;
                     self.curve.y1 = m1.y;
                 } else if (e.ctrlKey || e.metaKey) {
-                    // Ctrl-mirror: reflect across diagonal (y = x)
-                    var c1 = HaymMath.mirrorDiagonalHandle(2, self.curve.x2, self.curve.y2);
-                    self.curve.x1 = c1.x;
-                    self.curve.y1 = c1.y;
+                    // Ctrl-mirror: mirror ONLY X position (coming closer / pulling apart)
+                    self.curve.x1 = HaymMath.mirrorXHandle(2, self.curve.x2);
                 }
             }
 

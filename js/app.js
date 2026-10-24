@@ -49,10 +49,13 @@
             onCurveChange: handleCurveChange
         });
 
-        // 2. Register key interest for Enter key in CEP
+        // 2. Register key interest for Enter, Ctrl, Alt, Shift in CEP
         try {
             var keyEventsInterest = JSON.stringify([
-                { keyCode: 13 }
+                { keyCode: 13 }, // Enter
+                { keyCode: 17, ctrlKey: true }, // Ctrl
+                { keyCode: 18, altKey: true },  // Alt
+                { keyCode: 16, shiftKey: true } // Shift
             ]);
             csInterface.registerKeyEventsInterest(keyEventsInterest);
         } catch (e) {}
