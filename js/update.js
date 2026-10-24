@@ -14,7 +14,7 @@
     'use strict';
 
     var CURRENT_VERSION = "1.0.0";
-    var DEFAULT_REPO = "Haym-org/HaymGraph";
+    var DEFAULT_REPO = "arsh817258-lab/HaymGraph";
     var STORAGE_KEY_REPO = "haymgraph_github_repo";
     var STORAGE_KEY_AUTOCHECK = "haymgraph_autocheck_update";
 

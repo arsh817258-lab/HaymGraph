@@ -70,11 +70,11 @@ HaymGraph/
 
 HaymGraph includes built-in auto-update checking via [`js/update.js`](file:///e:/Antigravity/HaymGraph/js/update.js). Whenever you push a new release or update to GitHub, your users and friends will automatically be notified inside the panel with an update indicator (⚙️🔴) and can update without manual reinstallation.
 
-### 1. Linking your GitHub Repository
-In your terminal inside `HaymGraph/`:
+### 1. GitHub Repository
+Repository: [https://github.com/arsh817258-lab/HaymGraph](https://github.com/arsh817258-lab/HaymGraph)
+
 ```bash
-git remote add origin https://github.com/<YOUR-USERNAME>/HaymGraph.git
-git branch -M main
+git remote add origin https://github.com/arsh817258-lab/HaymGraph.git
 git push -u origin main
 ```
 
