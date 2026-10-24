@@ -227,6 +227,37 @@
     }
 
     /**
+     * Ctrl-mirror (Diagonal reflection across y = x):
+     * Reflects the handle across the diagonal line y = x so that:
+     * (xOpposite, yOpposite) = (ySource, xSource)
+     *
+     * Example:
+     * - Handle 1 at (0.6, 0.05) [Ease-In] reflects Handle 2 to (0.05, 0.6) (or vice versa).
+     * - Handle 1 at (0.0, 0.5) reflects Handle 2 to (0.5, 1.0) when anchored at opposite corner.
+     *
+     * Specifically, relative to endpoints:
+     * Endpoint 1 is at (0, 0), vector is (sourceX, sourceY).
+     * Endpoint 2 is at (1, 1), vector mirrored across y = x gives:
+     * targetX = 1 - (1 - sourceY) = sourceY or clamped reflection:
+     * When handle 1 is at (x1, y1), diagonal reflection across y = x sets handle 2 to:
+     * x2 = y1, y2 = x1.
+     * With relative corner anchoring (1 - ...):
+     * If source is P1: dx = x1 - 0 = x1, dy = y1 - 0 = y1.
+     * Swapping dx, dy for P2 from (1, 1):
+     * x2 = 1 - dy = 1 - y1, y2 = 1 - dx = 1 - x1 (this is Alt mirror).
+     * Pure diagonal reflection across the main axis y = x:
+     * targetX = sourceY, targetY = sourceX.
+     */
+    function mirrorDiagonalHandle(sourceHandleIndex, sourceX, sourceY) {
+        var targetX = clamp(sourceY, 0.0, 1.0);
+        var targetY = sourceX;
+        return {
+            x: Math.round(targetX * 1000) / 1000,
+            y: Math.round(targetY * 1000) / 1000
+        };
+    }
+
+    /**
      * Flatten handle: zeroes the handle's speed
      * P1 goes to y = 0, P2 goes to y = 1, keeping x.
      */
@@ -329,6 +360,7 @@
         computeCurveExtrema: computeCurveExtrema,
         reverseCurve: reverseCurve,
         mirrorHandle: mirrorHandle,
+        mirrorDiagonalHandle: mirrorDiagonalHandle,
         flattenHandle: flattenHandle,
         snapHandle: snapHandle,
         EPSILON: EPSILON,

@@ -207,7 +207,7 @@
 
         // Handle 1 line (Start -> P1)
         ctx.save();
-        ctx.strokeStyle = "rgba(0, 229, 255, 0.6)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(unitLeft, unitBottom);
@@ -217,7 +217,7 @@
 
         // Handle 2 line (End -> P2)
         ctx.save();
-        ctx.strokeStyle = "rgba(168, 85, 247, 0.6)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(unitRight, unitTop);
@@ -225,14 +225,14 @@
         ctx.stroke();
         ctx.restore();
 
-        // 6. Cubic Bezier Curve with neon gradient
+        // 6. Cubic Bezier Curve (Sleek Monochrome)
         ctx.save();
         var grad = ctx.createLinearGradient(unitLeft, unitBottom, unitRight, unitTop);
-        grad.addColorStop(0, "#00e5ff");
-        grad.addColorStop(1, "#a855f7");
+        grad.addColorStop(0, "#ffffff");
+        grad.addColorStop(1, "#d4d4d8");
 
         // Subtle glow under curve
-        ctx.shadowColor = "rgba(0, 229, 255, 0.35)";
+        ctx.shadowColor = "rgba(255, 255, 255, 0.25)";
         ctx.shadowBlur = 10;
         ctx.strokeStyle = grad;
         ctx.lineWidth = 2.8;
@@ -245,12 +245,12 @@
         ctx.restore();
 
         // 7. Endpoints: (0, 0) and (1, 1) key nodes
-        this._renderKeyNode(ctx, unitLeft, unitBottom, "#00e5ff");
-        this._renderKeyNode(ctx, unitRight, unitTop, "#a855f7");
+        this._renderKeyNode(ctx, unitLeft, unitBottom, "#ffffff");
+        this._renderKeyNode(ctx, unitRight, unitTop, "#ffffff");
 
-        // 8. Draggable Handles (P1 and P2)
-        this._renderHandle(ctx, 1, p1.px, p1.py, "#00e5ff", this.activeHandle === 1, this.hoveredHandle === 1);
-        this._renderHandle(ctx, 2, p2.px, p2.py, "#a855f7", this.activeHandle === 2, this.hoveredHandle === 2);
+        // 8. Draggable Handles (P1 and P2) - Monochrome
+        this._renderHandle(ctx, 1, p1.px, p1.py, "#ffffff", this.activeHandle === 1, this.hoveredHandle === 1);
+        this._renderHandle(ctx, 2, p2.px, p2.py, "#e4e4e7", this.activeHandle === 2, this.hoveredHandle === 2);
 
         // 9. Snapping indicator visual
         if (this.currentSnapInfo && this.currentSnapInfo.snapType) {
@@ -328,7 +328,7 @@
 
     CurveBox.prototype._renderSnapFeedback = function (ctx, snapInfo) {
         ctx.save();
-        ctx.strokeStyle = "rgba(0, 229, 255, 0.4)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
         ctx.setLineDash([2, 2]);
         ctx.lineWidth = 1;
 
@@ -426,21 +426,31 @@
                 self.curve.x1 = Math.round(newX * 1000) / 1000;
                 self.curve.y1 = Math.round(newY * 1000) / 1000;
 
-                // Alt-mirror: reflect opposite handle through center
+                // Alt-mirror: reflect opposite handle through center (0.5, 0.5)
                 if (e.altKey) {
                     var m2 = HaymMath.mirrorHandle(1, self.curve.x1, self.curve.y1);
                     self.curve.x2 = m2.x;
                     self.curve.y2 = m2.y;
+                } else if (e.ctrlKey || e.metaKey) {
+                    // Ctrl-mirror: reflect across diagonal (y = x)
+                    var c2 = HaymMath.mirrorDiagonalHandle(1, self.curve.x1, self.curve.y1);
+                    self.curve.x2 = c2.x;
+                    self.curve.y2 = c2.y;
                 }
             } else if (handleIdx === 2) {
                 self.curve.x2 = Math.round(newX * 1000) / 1000;
                 self.curve.y2 = Math.round(newY * 1000) / 1000;
 
-                // Alt-mirror: reflect opposite handle through center
+                // Alt-mirror: reflect opposite handle through center (0.5, 0.5)
                 if (e.altKey) {
                     var m1 = HaymMath.mirrorHandle(2, self.curve.x2, self.curve.y2);
                     self.curve.x1 = m1.x;
                     self.curve.y1 = m1.y;
+                } else if (e.ctrlKey || e.metaKey) {
+                    // Ctrl-mirror: reflect across diagonal (y = x)
+                    var c1 = HaymMath.mirrorDiagonalHandle(2, self.curve.x2, self.curve.y2);
+                    self.curve.x1 = c1.x;
+                    self.curve.y1 = c1.y;
                 }
             }
 

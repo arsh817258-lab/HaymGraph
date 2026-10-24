@@ -42,7 +42,7 @@ HaymGraph/
   - **Inverse Conversion**: AE `KeyframeEase` $\to$ Cubic Bezier $(x_1, y_1, x_2, y_2)$
   - **Extrema & Overshoot Detection**: Analytical roots of derivative $y'(t) = 0$ for exact curve peak/valley bounds
   - **Magnetic Snapping**: Flat, 45° diagonal, 0%, 100%, and grid lines (Shift bypasses)
-  - **Transformations**: Reverse (flip), Alt-mirror, and double-click flatten
+  - **Transformations**: Reverse (flip), Alt-mirror (point symmetry), Ctrl-mirror (diagonal ease reflection across $y=x$), and double-click flatten
 
 ### Layer 2: UI Viewport (`js/curveBox.js` & `js/app.js`)
 - Retina/HiDPI canvas rendering with glowing bezier paths.

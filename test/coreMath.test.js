@@ -138,6 +138,18 @@ test('Transformations: Reverse, Mirror, Flatten, Snapping', async (t) => {
         assert.equal(mirrored.y, 0.8); // 1 - 0.2
     });
 
+    await t.test('Ctrl-mirror diagonal handle (ease reflection)', () => {
+        // Dragging P1 to (0.6, 0.05) [Ease-In] diagonally mirrors P2 to (0.05, 0.6)
+        const diag1 = HaymMath.mirrorDiagonalHandle(1, 0.6, 0.05);
+        assert.equal(diag1.x, 0.05);
+        assert.equal(diag1.y, 0.6);
+
+        // Dragging P2 to (0.3, 1.0) diagonally mirrors P1 to (1.0, 0.3)
+        const diag2 = HaymMath.mirrorDiagonalHandle(2, 0.3, 1.0);
+        assert.equal(diag2.x, 1.0);
+        assert.equal(diag2.y, 0.3);
+    });
+
     await t.test('Flatten handles', () => {
         const flat1 = HaymMath.flattenHandle(1, 0.4);
         assert.equal(flat1.x, 0.4);

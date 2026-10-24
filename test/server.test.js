@@ -50,7 +50,7 @@ test('Local server serves all web app assets correctly', async (t) => {
         const res = await fetchUrl('/css/style.css');
         assert.equal(res.status, 200);
         assert.ok(res.body.includes('.haym-curve-canvas'));
-        assert.ok(res.body.includes('--accent-cyan'));
+        assert.ok(res.body.includes('--accent-mono'));
         assert.ok(res.body.includes('.action-toolbar'));
         assert.ok(res.body.includes('.settings-form'));
     });
