@@ -47,11 +47,27 @@ var HaymHost = (function () {
 
     /**
      * Gathers all selected properties across all selected layers
-     * or active composition.
+     * or active composition, filtering out unsupported types.
      */
     function getSelectedProperties(comp) {
         var props = [];
         var seen = {};
+
+        function isSupportedProperty(p) {
+            if (!p || p.propertyType !== PropertyType.PROPERTY || !p.canVaryOverTime) return false;
+            try {
+                var vt = p.propertyValueType;
+                // Exclude text documents, markers, and custom data
+                if (vt === PropertyValueType.TEXT_DOCUMENT ||
+                    vt === PropertyValueType.CUSTOM_VALUE ||
+                    vt === PropertyValueType.NO_VALUE) {
+                    return false;
+                }
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
 
         // 1. Direct comp.selectedProperties
         try {
@@ -59,7 +75,7 @@ var HaymHost = (function () {
             if (compSelected && compSelected.length > 0) {
                 for (var i = 0; i < compSelected.length; i++) {
                     var p = compSelected[i];
-                    if (p && p.propertyType === PropertyType.PROPERTY && p.canVaryOverTime) {
+                    if (isSupportedProperty(p)) {
                         var id = p.parentProperty ? (p.parentProperty.name + "_" + p.name + "_" + p.propertyIndex) : p.name;
                         if (!seen[id]) {
                             seen[id] = true;
@@ -79,7 +95,7 @@ var HaymHost = (function () {
                 if (layerProps) {
                     for (var j = 0; j < layerProps.length; j++) {
                         var lp = layerProps[j];
-                        if (lp && lp.propertyType === PropertyType.PROPERTY && lp.canVaryOverTime) {
+                        if (isSupportedProperty(lp)) {
                             var lid = layer.index + "_" + lp.name + "_" + lp.propertyIndex;
                             if (!seen[lid]) {
                                 seen[lid] = true;
@@ -480,6 +496,7 @@ var HaymHost = (function () {
 
         var separatedCount = 0;
         var appliedKeysCount = 0;
+        var warnings = [];
 
         try {
             for (var p = 0; p < props.length; p++) {
@@ -496,17 +513,38 @@ var HaymHost = (function () {
                     continue;
                 }
 
-                // 1. Record key times of the original position
-                var origKeyTimes = [];
+                var layer = prop.propertyGroup(prop.propertyDepth);
+
+                // Check edge cases: active expression & spatial curved tangents
+                try {
+                    if (prop.expressionEnabled && prop.expression && prop.expression.length > 0) {
+                        warnings.push("Layer '" + layer.name + "': Position had an active expression. Review separated dimensions.");
+                    }
+                } catch (e) {}
+
                 var selIndices = prop.selectedKeys;
                 if (!selIndices || selIndices.length === 0) continue;
 
+                try {
+                    for (var sk = 0; sk < selIndices.length; sk++) {
+                        var kTest = selIndices[sk];
+                        var inTan = prop.keyInSpatialTangent(kTest);
+                        var outTan = prop.keyOutSpatialTangent(kTest);
+                        if ((inTan && (Math.abs(inTan[0]) > 0.1 || Math.abs(inTan[1]) > 0.1)) ||
+                            (outTan && (Math.abs(outTan[0]) > 0.1 || Math.abs(outTan[1]) > 0.1))) {
+                            warnings.push("Layer '" + layer.name + "': Curved motion path was linearized by separating dimensions.");
+                            break;
+                        }
+                    }
+                } catch (e) {}
+
+                // 1. Record key times of the original position
+                var origKeyTimes = [];
                 for (var k = 0; k < selIndices.length; k++) {
                     origKeyTimes.push(prop.keyTime(selIndices[k]));
                 }
 
                 // 2. Separate dimensions
-                var layer = prop.propertyGroup(prop.propertyDepth);
                 prop.dimensionsSeparated = true;
                 separatedCount++;
 
@@ -554,7 +592,8 @@ var HaymHost = (function () {
             success: true,
             separatedCount: separatedCount,
             keysCount: appliedKeysCount,
-            message: "Separated " + separatedCount + " Position dimension(s) and applied curve to " + appliedKeysCount + " segment(s)."
+            message: "Separated " + separatedCount + " Position dimension(s) and applied curve to " + appliedKeysCount + " segment(s).",
+            warnings: warnings
         });
     }
 

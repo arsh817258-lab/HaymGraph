@@ -28,9 +28,6 @@
     var btnApply = document.getElementById('btn-apply');
     var btnAnalyze = document.getElementById('btn-analyze');
     var btnReverse = document.getElementById('btn-reverse');
-    var btnFlatten = document.getElementById('btn-flatten');
-    var btnEase = document.getElementById('btn-ease');
-    var btnLinear = document.getElementById('btn-linear');
 
     // Modal elements
     var overshootModal = document.getElementById('overshoot-modal');
@@ -61,19 +58,6 @@
         btnReverse.addEventListener('click', function () {
             curveBox.reverseCurve();
             showToast("Curve reversed", "info");
-        });
-        btnFlatten.addEventListener('click', function () {
-            curveBox.flattenHandle(1);
-            curveBox.flattenHandle(2);
-            showToast("Tangents flattened (Speed = 0)", "info");
-        });
-        btnEase.addEventListener('click', function () {
-            curveBox.setCurve({ x1: 0.333, y1: 0.0, x2: 0.667, y2: 1.0 });
-            showToast("Set Standard Ease", "info");
-        });
-        btnLinear.addEventListener('click', function () {
-            curveBox.setCurve({ x1: 0.333, y1: 0.333, x2: 0.667, y2: 0.667 });
-            showToast("Set Linear", "info");
         });
 
         // 4. Modal actions
@@ -193,6 +177,11 @@
                 if (res.success) {
                     setStatus(res.message, true);
                     showToast(res.message, "success");
+                    if (res.warnings && res.warnings.length > 0) {
+                        setTimeout(function () {
+                            showToast(res.warnings[0], "warning");
+                        }, 600);
+                    }
                 } else {
                     setStatus(res.message || "Failed to apply", false);
                     showToast(res.message, "warning");
@@ -218,6 +207,11 @@
                 if (res.success) {
                     setStatus(res.message, true);
                     showToast(res.message, "success");
+                    if (res.warnings && res.warnings.length > 0) {
+                        setTimeout(function () {
+                            showToast(res.warnings[0], "warning");
+                        }, 700);
+                    }
                     hasSpatialNonSeparatedPosition = false;
                     updateOvershootUI();
                 } else {
