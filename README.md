@@ -13,6 +13,7 @@ HaymGraph/
 ├── js/
 │   ├── coreMath.js       # Layer 1: Pure JS core math engine (Node & browser)
 │   ├── csInterface.js    # CEP / Dev fallback bridge
+│   ├── update.js         # Auto-updater & GitHub release manager
 │   ├── curveBox.js       # Layer 2: Interactive canvas cubic-bezier UI
 │   └── app.js            # Frontend UI controller & event binder
 ├── jsx/
@@ -22,6 +23,8 @@ HaymGraph/
 │   └── style.css         # Dark theme styling, glassmorphism, micro-animations
 ├── test/
 │   ├── coreMath.test.js  # Node.js unit tests for bezier <-> ease math
+│   ├── update.test.js    # Unit tests for semver & GitHub update logic
+│   ├── server.test.js    # Web server & panel asset integration tests
 │   └── syntax.test.js    # Syntax validation tests for ExtendScript
 ├── CSXS/
 │   └── manifest.xml      # CEP 11 / CSXS 9 manifest for AEFT 22.0+
@@ -42,9 +45,9 @@ HaymGraph/
   - **Transformations**: Reverse (flip), Alt-mirror, and double-click flatten
 
 ### Layer 2: UI Viewport (`js/curveBox.js` & `js/app.js`)
-- Retina/HiDPI canvas rendering.
+- Retina/HiDPI canvas rendering with glowing bezier paths.
 - Dynamic animated zooming: viewport smoothly animates $Y$-range when overshoot curves expand past $[0, 1]$.
-- Live numeric readout of handles, influence %, and velocity slopes.
+- Clean, minimal UI: only icon buttons (Reverse, Analyze, Enter), with double-click handle flattening.
 - CEP keyboard interest registration for `Enter` key.
 
 ### Layer 3: Host Layer (`jsx/host.jsx`)
@@ -60,6 +63,33 @@ HaymGraph/
   - Detects non-separated spatial Position keyframes when curve has overshoot ($y < 0$ or $y > 1$).
   - Shows 🔒 Locked badge.
   - One-click "Separate Dimensions & Apply" creates separated X/Y properties, remaps key times, and applies the curve in a single undo group.
+
+---
+
+## Auto-Update & GitHub Setup
+
+HaymGraph includes built-in auto-update checking via [`js/update.js`](file:///e:/Antigravity/HaymGraph/js/update.js). Whenever you push a new release or update to GitHub, your users and friends will automatically be notified inside the panel with an update indicator (⚙️🔴) and can update without manual reinstallation.
+
+### 1. Linking your GitHub Repository
+In your terminal inside `HaymGraph/`:
+```bash
+git remote add origin https://github.com/<YOUR-USERNAME>/HaymGraph.git
+git branch -M main
+git push -u origin main
+```
+
+### 2. Publishing a New Version
+When you want your friends to get an update:
+1. Update the version in `package.json` and `js/update.js` (e.g. from `1.0.0` to `1.1.0`).
+2. Commit and push:
+   ```bash
+   git add .
+   git commit -m "release: v1.1.0"
+   git tag v1.1.0
+   git push origin main --tags
+   ```
+3. (Optional) Create a GitHub Release for tag `v1.1.0`.
+4. Anyone opening HaymGraph will automatically receive the update alert in their panel!
 
 ---
 
@@ -81,9 +111,3 @@ node --test test/**/*.test.js
 node server.js
 ```
 Open `http://localhost:3000` in any browser.
-
----
-
-## Known Limitations & Design Decisions
-- **Single Cubic Bezier vs Multi-Bounce**: A single cubic bezier can produce anticipation and overshoot (a single bounce/settle), but cannot express multiple oscillations. True multi-bounce is treated as a separate follow-up feature (e.g. keyframe insertion or expression baking).
-- **Spatial Position Path Curvature**: For unified spatial Position, $\Delta V$ is calculated as straight-line distance between keyframes. Curved motion paths are resolved cleanly when using the Position Overshoot Fixer's Separate Dimensions workflow.

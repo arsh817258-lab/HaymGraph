@@ -1,7 +1,7 @@
 /**
  * HaymGraph - Main Application Controller
  * Handles UI interactions, CEP host communication,
- * Position Overshoot Fixer workflows, and theme synchronization.
+ * Position Overshoot Fixer workflows, settings, and auto-updates.
  */
 
 (function () {
@@ -11,16 +11,13 @@
     var curveBox = null;
     var currentExtrema = { minY: 0, maxY: 1, hasOvershoot: false };
     var hasSpatialNonSeparatedPosition = false;
+    var latestReleaseUrl = null;
 
-    // DOM Elements
+    // Header & Toolbar DOM Elements
     var overshootBadge = document.getElementById('overshoot-badge');
     var badgeExtrema = document.getElementById('badge-extrema');
-    var readoutP1Coords = document.getElementById('readout-p1-coords');
-    var readoutP2Coords = document.getElementById('readout-p2-coords');
-    var readoutInf1 = document.getElementById('readout-inf1');
-    var readoutSlope1 = document.getElementById('readout-slope1');
-    var readoutInf2 = document.getElementById('readout-inf2');
-    var readoutSlope2 = document.getElementById('readout-slope2');
+    var btnSettings = document.getElementById('btn-settings');
+    var updateDot = document.getElementById('update-dot');
     var statusMsg = document.getElementById('status-msg');
     var statusDot = document.getElementById('status-dot');
     var mixedIndicator = document.getElementById('mixed-indicator');
@@ -29,13 +26,22 @@
     var btnAnalyze = document.getElementById('btn-analyze');
     var btnReverse = document.getElementById('btn-reverse');
 
-    // Modal elements
+    // Position Overshoot Modal Elements
     var overshootModal = document.getElementById('overshoot-modal');
     var modalOvershootRange = document.getElementById('modal-overshoot-range');
     var btnSeparateApply = document.getElementById('btn-separate-apply');
     var btnApplyClamped = document.getElementById('btn-apply-clamped');
     var btnModalClose = document.getElementById('btn-modal-close');
-    var toastContainer = document.getElementById('toast-container');
+
+    // Settings & Updates Modal Elements
+    var settingsModal = document.getElementById('settings-modal');
+    var settingVersionTag = document.getElementById('setting-version-tag');
+    var settingRepoInput = document.getElementById('setting-repo-input');
+    var settingAutocheckToggle = document.getElementById('setting-autocheck-toggle');
+    var updateStatusBox = document.getElementById('update-status-box');
+    var btnCheckUpdates = document.getElementById('btn-check-updates');
+    var btnDownloadUpdate = document.getElementById('btn-download-update');
+    var btnSettingsClose = document.getElementById('btn-settings-close');
 
     function init() {
         // 1. Initialize CurveBox
@@ -44,7 +50,6 @@
         });
 
         // 2. Register key interest for Enter key in CEP
-        // Key code 13 is Enter
         try {
             var keyEventsInterest = JSON.stringify([
                 { keyCode: 13 }
@@ -52,18 +57,16 @@
             csInterface.registerKeyEventsInterest(keyEventsInterest);
         } catch (e) {}
 
-        // 3. Bind UI buttons
+        // 3. Bind Action Buttons
         btnApply.addEventListener('click', onApplyClick);
         btnAnalyze.addEventListener('click', onAnalyzeClick);
         btnReverse.addEventListener('click', function () {
             curveBox.reverseCurve();
-            showToast("Curve reversed", "info");
+            setStatus("Curve reversed", false);
         });
 
-        // 4. Modal actions
-        overshootBadge.addEventListener('click', function () {
-            openOvershootModal();
-        });
+        // 4. Position Overshoot Modal Actions
+        overshootBadge.addEventListener('click', openOvershootModal);
         btnSeparateApply.addEventListener('click', onSeparateAndApply);
         btnApplyClamped.addEventListener('click', function () {
             closeOvershootModal();
@@ -71,47 +74,64 @@
         });
         btnModalClose.addEventListener('click', closeOvershootModal);
 
-        // 5. Global Keyboard shortcuts
+        // 5. Settings & Auto-Updater Actions
+        btnSettings.addEventListener('click', openSettingsModal);
+        btnSettingsClose.addEventListener('click', closeSettingsModal);
+        btnCheckUpdates.addEventListener('click', triggerManualUpdateCheck);
+        btnDownloadUpdate.addEventListener('click', function () {
+            HaymUpdater.openDownloadPage(latestReleaseUrl);
+        });
+
+        if (settingRepoInput) {
+            settingRepoInput.value = HaymUpdater.getRepo();
+            settingRepoInput.addEventListener('change', function () {
+                HaymUpdater.setRepo(settingRepoInput.value);
+            });
+        }
+
+        if (settingAutocheckToggle) {
+            settingAutocheckToggle.checked = HaymUpdater.isAutoCheckEnabled();
+            settingAutocheckToggle.addEventListener('change', function () {
+                HaymUpdater.setAutoCheckEnabled(settingAutocheckToggle.checked);
+            });
+        }
+
+        if (settingVersionTag) {
+            settingVersionTag.textContent = "v" + HaymUpdater.CURRENT_VERSION;
+        }
+
+        // 6. Global Keyboard Shortcuts
         window.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 onApplyClick();
             } else if (e.key === 'Escape') {
                 closeOvershootModal();
+                closeSettingsModal();
             }
         });
 
-        // 6. Host Theme synchronization
+        // 7. Host Theme synchronization
         syncTheme();
         csInterface.addEventListener(CSInterface.THEME_COLOR_CHANGED_EVENT, syncTheme);
 
-        // 7. Initial selection check
+        // 8. Initial selection check
         refreshSelectionStatus();
 
-        // 8. Trigger initial curve update
+        // 9. Initial curve update
         handleCurveChange(curveBox.curve, HaymMath.computeCurveExtrema(curveBox.curve), null);
+
+        // 10. Background Update Check (if enabled)
+        if (HaymUpdater.isAutoCheckEnabled()) {
+            setTimeout(checkUpdatesSilently, 2500);
+        }
     }
 
     /**
-     * Curve change handler - updates readouts, extrema, and overshoot badge.
+     * Curve change handler - updates extrema badge & overshoot UI.
      */
     function handleCurveChange(curve, extrema, handleIndex) {
         currentExtrema = extrema;
-
-        // Update coordinate readouts
-        readoutP1Coords.textContent = curve.x1.toFixed(2) + ", " + curve.y1.toFixed(2);
-        readoutP2Coords.textContent = curve.x2.toFixed(2) + ", " + curve.y2.toFixed(2);
-
-        // Update influence & slope
-        var inf1 = (curve.x1 * 100).toFixed(1);
-        var slope1 = (curve.y1 / Math.max(curve.x1, 0.0001)).toFixed(2);
-        var inf2 = ((1.0 - curve.x2) * 100).toFixed(1);
-        var slope2 = ((1.0 - curve.y2) / Math.max(1.0 - curve.x2, 0.0001)).toFixed(2);
-
-        readoutInf1.textContent = inf1;
-        readoutSlope1.textContent = slope1;
-        readoutInf2.textContent = inf2;
-        readoutSlope2.textContent = slope2;
 
         // Viewport extrema badge
         badgeExtrema.textContent = "Y: [" + extrema.minY.toFixed(2) + ", " + extrema.maxY.toFixed(2) + "]";
@@ -176,19 +196,11 @@
                 var res = JSON.parse(resStr);
                 if (res.success) {
                     setStatus(res.message, true);
-                    showToast(res.message, "success");
-                    if (res.warnings && res.warnings.length > 0) {
-                        setTimeout(function () {
-                            showToast(res.warnings[0], "warning");
-                        }, 600);
-                    }
                 } else {
                     setStatus(res.message || "Failed to apply", false);
-                    showToast(res.message, "warning");
                 }
             } catch (err) {
                 setStatus("Communication error: " + err.toString(), false);
-                showToast("Host error: " + err.toString(), "error");
             }
         });
     }
@@ -206,21 +218,13 @@
                 var res = JSON.parse(resStr);
                 if (res.success) {
                     setStatus(res.message, true);
-                    showToast(res.message, "success");
-                    if (res.warnings && res.warnings.length > 0) {
-                        setTimeout(function () {
-                            showToast(res.warnings[0], "warning");
-                        }, 700);
-                    }
                     hasSpatialNonSeparatedPosition = false;
                     updateOvershootUI();
                 } else {
                     setStatus(res.message || "Failed to separate", false);
-                    showToast(res.message, "warning");
                 }
             } catch (e) {
                 setStatus("Error: " + e.toString(), false);
-                showToast(e.toString(), "error");
             }
         });
     }
@@ -236,7 +240,6 @@
                 if (res.success && res.curve) {
                     curveBox.setCurve(res.curve);
                     setStatus(res.message, true);
-                    showToast(res.message, "success");
 
                     if (res.hasMixedCurves) {
                         mixedIndicator.style.display = 'block';
@@ -245,11 +248,9 @@
                     }
                 } else {
                     setStatus(res.message || "Could not analyze", false);
-                    showToast(res.message, "warning");
                 }
             } catch (err) {
                 setStatus("Analyze error: " + err.toString(), false);
-                showToast(err.toString(), "error");
             }
         });
     }
@@ -263,6 +264,15 @@
         overshootModal.classList.remove('open');
     }
 
+    function openSettingsModal() {
+        if (settingRepoInput) settingRepoInput.value = HaymUpdater.getRepo();
+        settingsModal.classList.add('open');
+    }
+
+    function closeSettingsModal() {
+        settingsModal.classList.remove('open');
+    }
+
     function setStatus(text, isActive) {
         statusMsg.textContent = text;
         if (isActive) {
@@ -272,19 +282,47 @@
         }
     }
 
-    function showToast(message, type) {
-        var toast = document.createElement('div');
-        toast.className = 'toast ' + (type || 'info');
-        toast.textContent = message;
-        toastContainer.appendChild(toast);
+    /**
+     * Background quiet update check.
+     */
+    function checkUpdatesSilently() {
+        HaymUpdater.checkForUpdates(function (info) {
+            if (info && info.hasUpdate) {
+                latestReleaseUrl = info.htmlUrl;
+                updateDot.classList.remove('hidden');
+                setStatus("Update available: v" + info.latestVersion, true);
+            }
+        });
+    }
 
-        setTimeout(function () {
-            toast.style.opacity = '0';
-            toast.style.transition = 'opacity 0.25s ease';
-            setTimeout(function () {
-                if (toast.parentNode) toast.parentNode.removeChild(toast);
-            }, 260);
-        }, 2400);
+    /**
+     * Manual update check from Settings modal.
+     */
+    function triggerManualUpdateCheck() {
+        updateStatusBox.className = "update-status-box";
+        updateStatusBox.textContent = "Checking GitHub for updates...";
+        btnCheckUpdates.disabled = true;
+
+        HaymUpdater.checkForUpdates(function (info) {
+            btnCheckUpdates.disabled = false;
+            if (info.success) {
+                if (info.hasUpdate) {
+                    latestReleaseUrl = info.htmlUrl;
+                    updateDot.classList.remove('hidden');
+                    updateStatusBox.className = "update-status-box has-update";
+                    updateStatusBox.textContent = "New version available: v" + info.latestVersion + " (Current: v" + info.currentVersion + ")";
+                    btnDownloadUpdate.classList.remove('hidden');
+                } else {
+                    updateDot.classList.add('hidden');
+                    updateStatusBox.className = "update-status-box";
+                    updateStatusBox.textContent = "You are up to date! (v" + info.currentVersion + ")";
+                    btnDownloadUpdate.classList.add('hidden');
+                }
+            } else {
+                updateStatusBox.className = "update-status-box error";
+                updateStatusBox.textContent = info.message || "Failed to check for updates.";
+            }
+        });
     }
 
     function syncTheme() {
@@ -298,7 +336,6 @@
                     var g = Math.round(panelBg.color.green);
                     var b = Math.round(panelBg.color.blue);
                     document.documentElement.style.setProperty('--bg-primary', "rgb(" + r + "," + g + "," + b + ")");
-                    // Generate subtle variations
                     document.documentElement.style.setProperty('--bg-secondary', "rgb(" + Math.min(255, r + 6) + "," + Math.min(255, g + 6) + "," + Math.min(255, b + 6) + ")");
                     document.documentElement.style.setProperty('--bg-tertiary', "rgb(" + Math.min(255, r + 14) + "," + Math.min(255, g + 14) + "," + Math.min(255, b + 14) + ")");
                 }

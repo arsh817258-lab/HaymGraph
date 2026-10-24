@@ -41,7 +41,9 @@ test('Local server serves all web app assets correctly', async (t) => {
         assert.ok(res.body.includes('id="btn-reverse"'));
         assert.ok(!res.body.includes('id="btn-flatten"'));
         assert.ok(!res.body.includes('id="btn-ease"'));
-        assert.ok(!res.body.includes('id="btn-linear"'));
+        assert.ok(res.body.includes('settings-modal'));
+        assert.ok(!res.body.includes('readout-card'));
+        assert.ok(!res.body.includes('toast-container'));
     });
 
     await t.test('GET /css/style.css', async () => {
@@ -50,6 +52,7 @@ test('Local server serves all web app assets correctly', async (t) => {
         assert.ok(res.body.includes('.haym-curve-canvas'));
         assert.ok(res.body.includes('--accent-cyan'));
         assert.ok(res.body.includes('.action-toolbar'));
+        assert.ok(res.body.includes('.settings-form'));
     });
 
     await t.test('GET /js/coreMath.js', async () => {
@@ -57,6 +60,13 @@ test('Local server serves all web app assets correctly', async (t) => {
         assert.equal(res.status, 200);
         assert.ok(res.body.includes('bezierToEase'));
         assert.ok(res.body.includes('computeCurveExtrema'));
+    });
+
+    await t.test('GET /js/update.js', async () => {
+        const res = await fetchUrl('/js/update.js');
+        assert.equal(res.status, 200);
+        assert.ok(res.body.includes('HaymUpdater'));
+        assert.ok(res.body.includes('checkForUpdates'));
     });
 
     await t.test('GET /js/curveBox.js', async () => {
@@ -76,5 +86,6 @@ test('Local server serves all web app assets correctly', async (t) => {
         const res = await fetchUrl('/js/app.js');
         assert.equal(res.status, 200);
         assert.ok(res.body.includes('onSeparateAndApply'));
+        assert.ok(res.body.includes('HaymUpdater'));
     });
 });
