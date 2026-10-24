@@ -123,7 +123,7 @@
         }
     };
 
-    root.SystemPath = {
+    var SystemPath = {
         USER_DATA: "userData",
         COMMON_FILES: "commonFiles",
         MY_DOCUMENTS: "myDocuments",
@@ -131,6 +131,14 @@
         EXTENSION: "extension",
         HOST_APPLICATION: "hostApplication"
     };
+
+    CSInterface.SystemPath = SystemPath;
+    if (typeof window !== "undefined") {
+        window.SystemPath = SystemPath;
+    }
+    if (typeof globalThis !== "undefined") {
+        globalThis.SystemPath = SystemPath;
+    }
 
     return CSInterface;
 }));
