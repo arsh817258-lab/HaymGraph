@@ -115,14 +115,17 @@
     /**
      * In-place auto-updater: downloads latest files from GitHub and overwrites local extension.
      */
-    function installUpdateInPlace(targetTag, onProgress, onComplete) {
+    function installUpdateInPlace(targetTag, onProgress, onComplete, customBaseDir) {
         var repo = DEFAULT_REPO;
         var tag = targetTag || "main";
+
+        if (typeof onProgress !== "function") onProgress = function () {};
+        if (typeof onComplete !== "function") onComplete = function () {};
 
         // Query GitHub repository tree
         var treeUrl = "https://api.github.com/repos/" + repo + "/git/trees/" + tag + "?recursive=1";
 
-        onProgress("Fetching file list from GitHub...");
+        onProgress("Checking files for update " + tag + "...");
 
         fetch(treeUrl, {
             headers: { 'Accept': 'application/vnd.github.v3+json' }
@@ -154,24 +157,80 @@
 
             var nodeFs = null;
             var nodePath = null;
-            var baseDir = "";
+            var baseDir = customBaseDir || "";
 
             try {
-                if (typeof window !== "undefined" && typeof window.require === "function") {
-                    nodeFs = window.require("fs");
-                    nodePath = window.require("path");
-                    baseDir = (typeof __dirname !== "undefined") ? __dirname : "";
+                var req = (typeof window !== "undefined" && typeof window.require === "function")
+                    ? window.require
+                    : (typeof require === "function" ? require : null);
+                if (req) {
+                    nodeFs = req("fs");
+                    nodePath = req("path");
                 }
             } catch (e) {}
 
-            var completed = 0;
+            if (!baseDir) {
+                try {
+                    if (typeof window !== "undefined" && window.__adobe_cep__ && window.__adobe_cep__.getSystemPath) {
+                        baseDir = window.__adobe_cep__.getSystemPath("extension");
+                    }
+                } catch (e) {}
+            }
+
+            if (!baseDir) {
+                try {
+                    if (typeof __dirname !== "undefined") {
+                        baseDir = __dirname;
+                    } else if (nodePath && typeof process !== "undefined" && process.cwd) {
+                        baseDir = process.cwd();
+                    }
+                } catch (e) {}
+            }
+
+            var hasCepFs = (typeof window !== "undefined" && window.cep && window.cep.fs);
+
+            if (!baseDir || (!nodeFs && !hasCepFs)) {
+                onComplete({
+                    success: false,
+                    message: "Automatic disk write not available in current environment. Please install from GitHub."
+                });
+                return;
+            }
+
             var total = files.length;
+
+            function saveFile(relPath, content) {
+                try {
+                    if (nodeFs && nodePath && baseDir) {
+                        var fullPath = nodePath.resolve(baseDir, relPath);
+                        var dir = nodePath.dirname(fullPath);
+                        if (!nodeFs.existsSync(dir)) {
+                            nodeFs.mkdirSync(dir, { recursive: true });
+                        }
+                        nodeFs.writeFileSync(fullPath, content, "utf8");
+                        return true;
+                    } else if (hasCepFs && baseDir) {
+                        var normBase = baseDir.replace(/\\/g, "/").replace(/\/+$/, "");
+                        var fullPath = normBase + "/" + relPath.replace(/^\/+/, "");
+                        var lastSlash = fullPath.lastIndexOf("/");
+                        if (lastSlash > 0) {
+                            var dir = fullPath.substring(0, lastSlash);
+                            window.cep.fs.makedir(dir);
+                        }
+                        var writeRes = window.cep.fs.writeFile(fullPath, content);
+                        return writeRes.err === 0;
+                    }
+                } catch (err) {
+                    console.error("Error writing update file " + relPath + ":", err);
+                }
+                return false;
+            }
 
             function downloadNext(index) {
                 if (index >= files.length) {
-                    onProgress("Update complete! Reloading panel...");
+                    onProgress("Updated all " + total + " files! Restarting panel...");
                     setTimeout(function () {
-                        onComplete({ success: true });
+                        onComplete({ success: true, count: total });
                         if (typeof window !== "undefined" && window.location) {
                             window.location.reload();
                         }
@@ -190,30 +249,19 @@
                     return fileRes.text();
                 })
                 .then(function (content) {
-                    if (nodeFs && nodePath && baseDir) {
-                        var targetFilePath = nodePath.join(baseDir, item.path);
-                        var targetDir = nodePath.dirname(targetFilePath);
-                        if (!nodeFs.existsSync(targetDir)) {
-                            nodeFs.mkdirSync(targetDir, { recursive: true });
-                        }
-                        nodeFs.writeFileSync(targetFilePath, content, "utf8");
-                    }
+                    saveFile(item.path, content);
                     downloadNext(index + 1);
                 })
                 .catch(function (err) {
                     // Try falling back to main branch for raw URL if tag failed
                     var fallbackUrl = "https://raw.githubusercontent.com/" + repo + "/main/" + item.path + "?t=" + Date.now();
                     fetch(fallbackUrl)
-                    .then(function (fbRes) { return fbRes.text(); })
+                    .then(function (fbRes) {
+                        if (!fbRes.ok) throw new Error("Could not download " + item.path);
+                        return fbRes.text();
+                    })
                     .then(function (content) {
-                        if (nodeFs && nodePath && baseDir) {
-                            var targetFilePath = nodePath.join(baseDir, item.path);
-                            var targetDir = nodePath.dirname(targetFilePath);
-                            if (!nodeFs.existsSync(targetDir)) {
-                                nodeFs.mkdirSync(targetDir, { recursive: true });
-                            }
-                            nodeFs.writeFileSync(targetFilePath, content, "utf8");
-                        }
+                        saveFile(item.path, content);
                         downloadNext(index + 1);
                     })
                     .catch(function (fbErr) {

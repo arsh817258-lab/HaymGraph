@@ -105,12 +105,31 @@
     };
 
     /**
+     * Retrieves system paths (e.g. extension path).
+     */
+    CSInterface.prototype.getSystemPath = function (pathType) {
+        if (this.isCEP && window.__adobe_cep__.getSystemPath) {
+            return window.__adobe_cep__.getSystemPath(pathType);
+        }
+        return "";
+    };
+
+    /**
      * Closes the panel.
      */
     CSInterface.prototype.closeExtension = function () {
         if (this.isCEP && window.__adobe_cep__.closeExtension) {
             window.__adobe_cep__.closeExtension();
         }
+    };
+
+    root.SystemPath = {
+        USER_DATA: "userData",
+        COMMON_FILES: "commonFiles",
+        MY_DOCUMENTS: "myDocuments",
+        APPLICATION: "application",
+        EXTENSION: "extension",
+        HOST_APPLICATION: "hostApplication"
     };
 
     return CSInterface;

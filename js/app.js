@@ -79,19 +79,7 @@
         btnSettingsClose.addEventListener('click', closeSettingsModal);
         btnCheckUpdates.addEventListener('click', triggerManualUpdateCheck);
         btnInstallUpdate.addEventListener('click', function () {
-            btnInstallUpdate.disabled = true;
-            btnCheckUpdates.disabled = true;
-            updateStatusBox.className = "update-status-box";
-            HaymUpdater.installUpdateInPlace(currentUpdateTag, function (msg) {
-                updateStatusBox.textContent = msg;
-            }, function (result) {
-                if (!result.success) {
-                    btnInstallUpdate.disabled = false;
-                    btnCheckUpdates.disabled = false;
-                    updateStatusBox.className = "update-status-box error";
-                    updateStatusBox.textContent = result.message || "Update failed.";
-                }
-            });
+            startAutoUpdate(currentUpdateTag, "latest");
         });
 
         if (settingAutocheckToggle) {
@@ -286,28 +274,82 @@
         }
     }
 
+    var isUpdating = false;
+
     /**
-     * Background quiet update check.
+     * Automatically downloads and installs the detected update in-place,
+     * showing progress in the status bar and modal, then reloads the panel.
+     */
+    function startAutoUpdate(targetTag, targetVersion) {
+        if (isUpdating) return;
+        isUpdating = true;
+
+        var extDir = "";
+        try {
+            if (csInterface && csInterface.getSystemPath && typeof SystemPath !== "undefined" && SystemPath.EXTENSION) {
+                extDir = csInterface.getSystemPath(SystemPath.EXTENSION);
+            }
+        } catch (e) {}
+
+        updateDot.classList.remove('hidden');
+        setStatus("New version v" + targetVersion + " found! Auto-installing...", true);
+
+        if (updateStatusBox) {
+            updateStatusBox.className = "update-status-box has-update";
+            updateStatusBox.textContent = "New version v" + targetVersion + " found! Auto-installing update...";
+        }
+        if (btnCheckUpdates) {
+            btnCheckUpdates.disabled = true;
+        }
+        if (btnInstallUpdate) {
+            btnInstallUpdate.classList.add('hidden');
+        }
+
+        HaymUpdater.installUpdateInPlace(targetTag, function (msg) {
+            setStatus(msg, true);
+            if (updateStatusBox) {
+                updateStatusBox.textContent = msg;
+            }
+        }, function (result) {
+            isUpdating = false;
+            if (btnCheckUpdates) {
+                btnCheckUpdates.disabled = false;
+            }
+            if (result.success) {
+                setStatus("Updated to v" + targetVersion + "! Reloading...", true);
+                if (updateStatusBox) {
+                    updateStatusBox.className = "update-status-box";
+                    updateStatusBox.textContent = "Updated to v" + targetVersion + "! Reloading panel...";
+                }
+            } else {
+                setStatus("Auto-update failed: " + (result.message || "Unknown error"), false);
+                if (updateStatusBox) {
+                    updateStatusBox.className = "update-status-box error";
+                    updateStatusBox.textContent = result.message || "Auto-update failed.";
+                }
+            }
+        }, extDir);
+    }
+
+    /**
+     * Background quiet update check: checks GitHub and automatically installs if an update exists.
      */
     function checkUpdatesSilently() {
+        if (isUpdating) return;
         HaymUpdater.checkForUpdates(function (info) {
             if (info && info.hasUpdate) {
                 latestReleaseUrl = info.htmlUrl;
                 currentUpdateTag = info.tag || ("v" + info.latestVersion);
-                updateDot.classList.remove('hidden');
-                setStatus("Update available: v" + info.latestVersion, true);
-                if (btnInstallUpdate) {
-                    btnInstallUpdate.textContent = "Update Now (v" + info.latestVersion + ")";
-                    btnInstallUpdate.classList.remove('hidden');
-                }
+                startAutoUpdate(currentUpdateTag, info.latestVersion);
             }
         });
     }
 
     /**
-     * Manual update check from Settings modal.
+     * Manual update check from Settings modal: checks and auto-installs immediately.
      */
     function triggerManualUpdateCheck() {
+        if (isUpdating) return;
         updateStatusBox.className = "update-status-box";
         updateStatusBox.textContent = "Checking GitHub for updates...";
         btnCheckUpdates.disabled = true;
@@ -318,16 +360,12 @@
                 if (info.hasUpdate) {
                     latestReleaseUrl = info.htmlUrl;
                     currentUpdateTag = info.tag || ("v" + info.latestVersion);
-                    updateDot.classList.remove('hidden');
-                    updateStatusBox.className = "update-status-box has-update";
-                    updateStatusBox.textContent = "New version available: v" + info.latestVersion + " (Current: v" + info.currentVersion + ")";
-                    btnInstallUpdate.textContent = "Update Now (v" + info.latestVersion + ")";
-                    btnInstallUpdate.classList.remove('hidden');
+                    startAutoUpdate(currentUpdateTag, info.latestVersion);
                 } else {
                     updateDot.classList.add('hidden');
                     updateStatusBox.className = "update-status-box";
                     updateStatusBox.textContent = "You are up to date! (v" + info.currentVersion + ")";
-                    btnInstallUpdate.classList.add('hidden');
+                    if (btnInstallUpdate) btnInstallUpdate.classList.add('hidden');
                 }
             } else {
                 updateStatusBox.className = "update-status-box error";
