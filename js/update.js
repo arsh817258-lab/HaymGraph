@@ -112,6 +112,21 @@
         });
     }
 
+    function cleanDirectoryPath(rawPath) {
+        if (!rawPath) return "";
+        var p = String(rawPath);
+        try {
+            p = decodeURIComponent(p);
+        } catch (e) {
+            try { p = decodeURI(p); } catch (e2) {}
+        }
+        p = p.replace(/^file:\/{2,3}/i, '');
+        if (/^\/[a-zA-Z]:/.test(p)) {
+            p = p.substring(1);
+        }
+        return p.replace(/\\/g, '/').replace(/\/+$/, '');
+    }
+
     /**
      * In-place auto-updater: downloads latest files from GitHub and overwrites local extension.
      */
@@ -157,7 +172,7 @@
 
             var nodeFs = null;
             var nodePath = null;
-            var baseDir = customBaseDir || "";
+            var baseDir = cleanDirectoryPath(customBaseDir);
 
             try {
                 var req = (typeof window !== "undefined" && typeof window.require === "function")
@@ -172,7 +187,7 @@
             if (!baseDir) {
                 try {
                     if (typeof window !== "undefined" && window.__adobe_cep__ && window.__adobe_cep__.getSystemPath) {
-                        baseDir = window.__adobe_cep__.getSystemPath("extension");
+                        baseDir = cleanDirectoryPath(window.__adobe_cep__.getSystemPath("extension"));
                     }
                 } catch (e) {}
             }
@@ -180,9 +195,9 @@
             if (!baseDir) {
                 try {
                     if (typeof __dirname !== "undefined") {
-                        baseDir = __dirname;
+                        baseDir = cleanDirectoryPath(__dirname);
                     } else if (nodePath && typeof process !== "undefined" && process.cwd) {
-                        baseDir = process.cwd();
+                        baseDir = cleanDirectoryPath(process.cwd());
                     }
                 } catch (e) {}
             }
@@ -200,30 +215,42 @@
             var total = files.length;
 
             function saveFile(relPath, content) {
-                try {
-                    if (nodeFs && nodePath && baseDir) {
-                        var fullPath = nodePath.resolve(baseDir, relPath);
-                        var dir = nodePath.dirname(fullPath);
-                        if (!nodeFs.existsSync(dir)) {
-                            nodeFs.mkdirSync(dir, { recursive: true });
+                var written = false;
+
+                if (nodeFs && nodePath && baseDir) {
+                    try {
+                        var targetFilePath = nodePath.resolve(baseDir, relPath);
+                        var targetDir = nodePath.dirname(targetFilePath);
+                        if (!nodeFs.existsSync(targetDir)) {
+                            nodeFs.mkdirSync(targetDir, { recursive: true });
                         }
-                        nodeFs.writeFileSync(fullPath, content, "utf8");
-                        return true;
-                    } else if (hasCepFs && baseDir) {
-                        var normBase = baseDir.replace(/\\/g, "/").replace(/\/+$/, "");
-                        var fullPath = normBase + "/" + relPath.replace(/^\/+/, "");
-                        var lastSlash = fullPath.lastIndexOf("/");
-                        if (lastSlash > 0) {
-                            var dir = fullPath.substring(0, lastSlash);
-                            window.cep.fs.makedir(dir);
-                        }
-                        var writeRes = window.cep.fs.writeFile(fullPath, content);
-                        return writeRes.err === 0;
+                        nodeFs.writeFileSync(targetFilePath, content, "utf8");
+                        written = true;
+                    } catch (fsErr) {
+                        console.error("nodeFs write error on " + relPath + ":", fsErr);
                     }
-                } catch (err) {
-                    console.error("Error writing update file " + relPath + ":", err);
                 }
-                return false;
+
+                if (!written && hasCepFs && baseDir) {
+                    try {
+                        var normPath = baseDir + "/" + relPath.replace(/^\/+/, "");
+                        var lastSlash = normPath.lastIndexOf("/");
+                        if (lastSlash > 0) {
+                            var dirPath = normPath.substring(0, lastSlash);
+                            window.cep.fs.makedir(dirPath);
+                        }
+                        var res = window.cep.fs.writeFile(normPath, content);
+                        if (res && res.err === 0) {
+                            written = true;
+                        } else {
+                            console.error("cep.fs write error on " + relPath + ": code " + (res ? res.err : "null"));
+                        }
+                    } catch (cepErr) {
+                        console.error("cep.fs exception on " + relPath + ":", cepErr);
+                    }
+                }
+
+                return written;
             }
 
             function downloadNext(index) {
@@ -249,7 +276,10 @@
                     return fileRes.text();
                 })
                 .then(function (content) {
-                    saveFile(item.path, content);
+                    var ok = saveFile(item.path, content);
+                    if (!ok) {
+                        throw new Error("Failed to write " + item.path + " to disk (Permission or path error). Update stopped.");
+                    }
                     downloadNext(index + 1);
                 })
                 .catch(function (err) {
@@ -261,11 +291,14 @@
                         return fbRes.text();
                     })
                     .then(function (content) {
-                        saveFile(item.path, content);
+                        var ok = saveFile(item.path, content);
+                        if (!ok) {
+                            throw new Error("Failed to write " + item.path + " to disk. Update stopped.");
+                        }
                         downloadNext(index + 1);
                     })
                     .catch(function (fbErr) {
-                        onComplete({ success: false, message: "Error updating " + item.path + ": " + fbErr.message });
+                        onComplete({ success: false, message: fbErr.message });
                     });
                 });
             }

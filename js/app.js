@@ -316,13 +316,16 @@
                 btnCheckUpdates.disabled = false;
             }
             if (result.success) {
+                try {
+                    sessionStorage.removeItem("haym_auto_update_attempt");
+                } catch (e) {}
                 setStatus("Updated to v" + targetVersion + "! Reloading...", true);
                 if (updateStatusBox) {
                     updateStatusBox.className = "update-status-box";
                     updateStatusBox.textContent = "Updated to v" + targetVersion + "! Reloading panel...";
                 }
             } else {
-                setStatus("Auto-update failed: " + (result.message || "Unknown error"), false);
+                setStatus("Update stopped: " + (result.message || "Unknown error"), false);
                 if (updateStatusBox) {
                     updateStatusBox.className = "update-status-box error";
                     updateStatusBox.textContent = result.message || "Auto-update failed.";
@@ -333,13 +336,31 @@
 
     /**
      * Background quiet update check: checks GitHub and automatically installs if an update exists.
+     * Guarded by session storage to prevent infinite download loops.
      */
     function checkUpdatesSilently() {
         if (isUpdating) return;
+
+        var lastAttempt = null;
+        try {
+            lastAttempt = sessionStorage.getItem("haym_auto_update_attempt");
+        } catch (e) {}
+
         HaymUpdater.checkForUpdates(function (info) {
             if (info && info.hasUpdate) {
+                var targetTag = info.tag || ("v" + info.latestVersion);
+                if (lastAttempt === targetTag) {
+                    // Update was already attempted this session; show notification dot only
+                    updateDot.classList.remove('hidden');
+                    return;
+                }
+
+                try {
+                    sessionStorage.setItem("haym_auto_update_attempt", targetTag);
+                } catch (e) {}
+
                 latestReleaseUrl = info.htmlUrl;
-                currentUpdateTag = info.tag || ("v" + info.latestVersion);
+                currentUpdateTag = targetTag;
                 startAutoUpdate(currentUpdateTag, info.latestVersion);
             }
         });
