@@ -1,0 +1,56 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const http = require('node:http');
+
+function fetchUrl(path) {
+    return new Promise((resolve, reject) => {
+        http.get(`http://localhost:3000${path}`, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
+        }).on('error', reject);
+    });
+}
+
+test('Local server serves all web app assets correctly', async (t) => {
+    await t.test('GET / (index.html)', async () => {
+        const res = await fetchUrl('/');
+        assert.equal(res.status, 200);
+        assert.ok(res.body.includes('<title>HaymGraph</title>'));
+        assert.ok(res.body.includes('curve-box-container'));
+        assert.ok(res.body.includes('overshoot-modal'));
+    });
+
+    await t.test('GET /css/style.css', async () => {
+        const res = await fetchUrl('/css/style.css');
+        assert.equal(res.status, 200);
+        assert.ok(res.body.includes('.haym-curve-canvas'));
+        assert.ok(res.body.includes('--accent-cyan'));
+    });
+
+    await t.test('GET /js/coreMath.js', async () => {
+        const res = await fetchUrl('/js/coreMath.js');
+        assert.equal(res.status, 200);
+        assert.ok(res.body.includes('bezierToEase'));
+        assert.ok(res.body.includes('computeCurveExtrema'));
+    });
+
+    await t.test('GET /js/curveBox.js', async () => {
+        const res = await fetchUrl('/js/curveBox.js');
+        assert.equal(res.status, 200);
+        assert.ok(res.body.includes('CurveBox'));
+        assert.ok(res.body.includes('flattenHandle'));
+    });
+
+    await t.test('GET /js/csInterface.js', async () => {
+        const res = await fetchUrl('/js/csInterface.js');
+        assert.equal(res.status, 200);
+        assert.ok(res.body.includes('CSInterface'));
+    });
+
+    await t.test('GET /js/app.js', async () => {
+        const res = await fetchUrl('/js/app.js');
+        assert.equal(res.status, 200);
+        assert.ok(res.body.includes('onSeparateAndApply'));
+    });
+});

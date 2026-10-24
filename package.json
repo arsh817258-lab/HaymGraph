@@ -1,0 +1,20 @@
+{
+  "name": "haymgraph",
+  "version": "1.0.0",
+  "description": "After Effects Keyframe Curve Box & Easing CEP Extension",
+  "main": "index.html",
+  "scripts": {
+    "test": "node --test test/**/*.test.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "after-effects",
+    "cep",
+    "easing",
+    "motion-graphics",
+    "animation",
+    "cubic-bezier"
+  ],
+  "author": "HaymGraph",
+  "license": "MIT"
+}
