@@ -1,7 +1,7 @@
 /**
  * HaymGraph Auto-Updater
  * Checks GitHub repository releases for newer versions,
- * alerts user, and handles seamless extension updates.
+ * alerts user, and handles seamless in-place extension updates via JavaScript.
  */
 
 (function (root, factory) {
@@ -15,22 +15,7 @@
 
     var CURRENT_VERSION = "1.0.0";
     var DEFAULT_REPO = "arsh817258-lab/HaymGraph";
-    var STORAGE_KEY_REPO = "haymgraph_github_repo";
     var STORAGE_KEY_AUTOCHECK = "haymgraph_autocheck_update";
-
-    function getRepo() {
-        try {
-            return localStorage.getItem(STORAGE_KEY_REPO) || DEFAULT_REPO;
-        } catch (e) {
-            return DEFAULT_REPO;
-        }
-    }
-
-    function setRepo(repoName) {
-        try {
-            localStorage.setItem(STORAGE_KEY_REPO, repoName.trim());
-        } catch (e) {}
-    }
 
     function isAutoCheckEnabled() {
         try {
@@ -72,11 +57,10 @@
      * Checks GitHub for the latest release or package.json tag.
      */
     function checkForUpdates(callback) {
-        var repo = getRepo();
-        var apiUrl = "https://api.github.com/repos/" + repo + "/releases/latest";
-        var rawUrl = "https://raw.githubusercontent.com/" + repo + "/main/package.json";
+        var repo = DEFAULT_REPO;
+        var apiUrl = "https://api.github.com/repos/" + repo + "/releases/latest?t=" + Date.now();
+        var rawUrl = "https://raw.githubusercontent.com/" + repo + "/main/package.json?t=" + Date.now();
 
-        // Attempt GitHub releases API first
         fetch(apiUrl, {
             headers: { 'Accept': 'application/vnd.github.v3+json' }
         })
@@ -84,20 +68,20 @@
             if (res.ok) {
                 return res.json().then(function (data) {
                     var latestTag = data.tag_name || data.name || "0.0.0";
-                    var isNewer = compareVersions(latestTag, CURRENT_VERSION) > 0;
+                    var cleanTag = latestTag.replace(/^[vV]/, '');
+                    var isNewer = compareVersions(cleanTag, CURRENT_VERSION) > 0;
                     callback({
                         success: true,
                         hasUpdate: isNewer,
                         currentVersion: CURRENT_VERSION,
-                        latestVersion: latestTag.replace(/^[vV]/, ''),
+                        latestVersion: cleanTag,
                         releaseName: data.name || latestTag,
                         releaseNotes: data.body || "",
                         htmlUrl: data.html_url || ("https://github.com/" + repo + "/releases"),
-                        zipUrl: data.zipball_url || null
+                        tag: latestTag
                     });
                 });
             } else {
-                // Fallback to checking package.json on main branch
                 return fetch(rawUrl).then(function (rawRes) {
                     if (rawRes.ok) {
                         return rawRes.json().then(function (pkg) {
@@ -111,7 +95,7 @@
                                 releaseName: "v" + rawVer,
                                 releaseNotes: "New update published to GitHub main branch.",
                                 htmlUrl: "https://github.com/" + repo,
-                                zipUrl: null
+                                tag: "v" + rawVer
                             });
                         });
                     }
@@ -129,13 +113,130 @@
     }
 
     /**
-     * Opens the release download page in system default browser.
+     * In-place auto-updater: downloads latest files from GitHub and overwrites local extension.
+     */
+    function installUpdateInPlace(targetTag, onProgress, onComplete) {
+        var repo = DEFAULT_REPO;
+        var tag = targetTag || "main";
+
+        // Query GitHub repository tree
+        var treeUrl = "https://api.github.com/repos/" + repo + "/git/trees/" + tag + "?recursive=1";
+
+        onProgress("Fetching file list from GitHub...");
+
+        fetch(treeUrl, {
+            headers: { 'Accept': 'application/vnd.github.v3+json' }
+        })
+        .then(function (res) {
+            if (!res.ok) {
+                // If tag tree lookup fails, try main branch tree
+                return fetch("https://api.github.com/repos/" + repo + "/git/trees/main?recursive=1", {
+                    headers: { 'Accept': 'application/vnd.github.v3+json' }
+                }).then(function (r) {
+                    if (!r.ok) throw new Error("Could not retrieve file list from GitHub.");
+                    return r.json();
+                });
+            }
+            return res.json();
+        })
+        .then(function (treeData) {
+            var files = (treeData.tree || []).filter(function (item) {
+                return item.type === "blob" &&
+                       !item.path.startsWith(".git") &&
+                       !item.path.startsWith("test/") &&
+                       !item.path.endsWith(".log") &&
+                       item.path !== ".gitignore";
+            });
+
+            if (files.length === 0) {
+                throw new Error("No update files found in repository.");
+            }
+
+            var nodeFs = null;
+            var nodePath = null;
+            var baseDir = "";
+
+            try {
+                if (typeof window !== "undefined" && typeof window.require === "function") {
+                    nodeFs = window.require("fs");
+                    nodePath = window.require("path");
+                    baseDir = (typeof __dirname !== "undefined") ? __dirname : "";
+                }
+            } catch (e) {}
+
+            var completed = 0;
+            var total = files.length;
+
+            function downloadNext(index) {
+                if (index >= files.length) {
+                    onProgress("Update complete! Reloading panel...");
+                    setTimeout(function () {
+                        onComplete({ success: true });
+                        if (typeof window !== "undefined" && window.location) {
+                            window.location.reload();
+                        }
+                    }, 1200);
+                    return;
+                }
+
+                var item = files[index];
+                onProgress("Updating (" + (index + 1) + "/" + total + "): " + item.path);
+
+                var rawUrl = "https://raw.githubusercontent.com/" + repo + "/" + tag + "/" + item.path + "?t=" + Date.now();
+
+                fetch(rawUrl)
+                .then(function (fileRes) {
+                    if (!fileRes.ok) throw new Error("Failed to download " + item.path);
+                    return fileRes.text();
+                })
+                .then(function (content) {
+                    if (nodeFs && nodePath && baseDir) {
+                        var targetFilePath = nodePath.join(baseDir, item.path);
+                        var targetDir = nodePath.dirname(targetFilePath);
+                        if (!nodeFs.existsSync(targetDir)) {
+                            nodeFs.mkdirSync(targetDir, { recursive: true });
+                        }
+                        nodeFs.writeFileSync(targetFilePath, content, "utf8");
+                    }
+                    downloadNext(index + 1);
+                })
+                .catch(function (err) {
+                    // Try falling back to main branch for raw URL if tag failed
+                    var fallbackUrl = "https://raw.githubusercontent.com/" + repo + "/main/" + item.path + "?t=" + Date.now();
+                    fetch(fallbackUrl)
+                    .then(function (fbRes) { return fbRes.text(); })
+                    .then(function (content) {
+                        if (nodeFs && nodePath && baseDir) {
+                            var targetFilePath = nodePath.join(baseDir, item.path);
+                            var targetDir = nodePath.dirname(targetFilePath);
+                            if (!nodeFs.existsSync(targetDir)) {
+                                nodeFs.mkdirSync(targetDir, { recursive: true });
+                            }
+                            nodeFs.writeFileSync(targetFilePath, content, "utf8");
+                        }
+                        downloadNext(index + 1);
+                    })
+                    .catch(function (fbErr) {
+                        onComplete({ success: false, message: "Error updating " + item.path + ": " + fbErr.message });
+                    });
+                });
+            }
+
+            downloadNext(0);
+        })
+        .catch(function (err) {
+            onComplete({ success: false, message: err.message || "Update installation failed." });
+        });
+    }
+
+    /**
+     * Opens the release download page in system default browser (fallback).
      */
     function openDownloadPage(url) {
-        var targetUrl = url || ("https://github.com/" + getRepo() + "/releases/latest");
-        if (typeof window.__adobe_cep__ !== "undefined" && window.__adobe_cep__.openURLInDefaultBrowser) {
+        var targetUrl = url || ("https://github.com/" + DEFAULT_REPO + "/releases/latest");
+        if (typeof window !== "undefined" && typeof window.__adobe_cep__ !== "undefined" && window.__adobe_cep__.openURLInDefaultBrowser) {
             window.__adobe_cep__.openURLInDefaultBrowser(targetUrl);
-        } else {
+        } else if (typeof window !== "undefined") {
             window.open(targetUrl, "_blank");
         }
     }
@@ -143,12 +244,11 @@
     return {
         CURRENT_VERSION: CURRENT_VERSION,
         DEFAULT_REPO: DEFAULT_REPO,
-        getRepo: getRepo,
-        setRepo: setRepo,
         isAutoCheckEnabled: isAutoCheckEnabled,
         setAutoCheckEnabled: setAutoCheckEnabled,
         compareVersions: compareVersions,
         checkForUpdates: checkForUpdates,
+        installUpdateInPlace: installUpdateInPlace,
         openDownloadPage: openDownloadPage
     };
 }));

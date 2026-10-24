@@ -36,12 +36,12 @@
     // Settings & Updates Modal Elements
     var settingsModal = document.getElementById('settings-modal');
     var settingVersionTag = document.getElementById('setting-version-tag');
-    var settingRepoInput = document.getElementById('setting-repo-input');
     var settingAutocheckToggle = document.getElementById('setting-autocheck-toggle');
     var updateStatusBox = document.getElementById('update-status-box');
     var btnCheckUpdates = document.getElementById('btn-check-updates');
-    var btnDownloadUpdate = document.getElementById('btn-download-update');
+    var btnInstallUpdate = document.getElementById('btn-install-update');
     var btnSettingsClose = document.getElementById('btn-settings-close');
+    var currentUpdateTag = null;
 
     function init() {
         // 1. Initialize CurveBox
@@ -78,16 +78,21 @@
         btnSettings.addEventListener('click', openSettingsModal);
         btnSettingsClose.addEventListener('click', closeSettingsModal);
         btnCheckUpdates.addEventListener('click', triggerManualUpdateCheck);
-        btnDownloadUpdate.addEventListener('click', function () {
-            HaymUpdater.openDownloadPage(latestReleaseUrl);
-        });
-
-        if (settingRepoInput) {
-            settingRepoInput.value = HaymUpdater.getRepo();
-            settingRepoInput.addEventListener('change', function () {
-                HaymUpdater.setRepo(settingRepoInput.value);
+        btnInstallUpdate.addEventListener('click', function () {
+            btnInstallUpdate.disabled = true;
+            btnCheckUpdates.disabled = true;
+            updateStatusBox.className = "update-status-box";
+            HaymUpdater.installUpdateInPlace(currentUpdateTag, function (msg) {
+                updateStatusBox.textContent = msg;
+            }, function (result) {
+                if (!result.success) {
+                    btnInstallUpdate.disabled = false;
+                    btnCheckUpdates.disabled = false;
+                    updateStatusBox.className = "update-status-box error";
+                    updateStatusBox.textContent = result.message || "Update failed.";
+                }
             });
-        }
+        });
 
         if (settingAutocheckToggle) {
             settingAutocheckToggle.checked = HaymUpdater.isAutoCheckEnabled();
@@ -265,7 +270,6 @@
     }
 
     function openSettingsModal() {
-        if (settingRepoInput) settingRepoInput.value = HaymUpdater.getRepo();
         settingsModal.classList.add('open');
     }
 
@@ -289,8 +293,13 @@
         HaymUpdater.checkForUpdates(function (info) {
             if (info && info.hasUpdate) {
                 latestReleaseUrl = info.htmlUrl;
+                currentUpdateTag = info.tag || ("v" + info.latestVersion);
                 updateDot.classList.remove('hidden');
                 setStatus("Update available: v" + info.latestVersion, true);
+                if (btnInstallUpdate) {
+                    btnInstallUpdate.textContent = "Update Now (v" + info.latestVersion + ")";
+                    btnInstallUpdate.classList.remove('hidden');
+                }
             }
         });
     }
@@ -308,15 +317,17 @@
             if (info.success) {
                 if (info.hasUpdate) {
                     latestReleaseUrl = info.htmlUrl;
+                    currentUpdateTag = info.tag || ("v" + info.latestVersion);
                     updateDot.classList.remove('hidden');
                     updateStatusBox.className = "update-status-box has-update";
                     updateStatusBox.textContent = "New version available: v" + info.latestVersion + " (Current: v" + info.currentVersion + ")";
-                    btnDownloadUpdate.classList.remove('hidden');
+                    btnInstallUpdate.textContent = "Update Now (v" + info.latestVersion + ")";
+                    btnInstallUpdate.classList.remove('hidden');
                 } else {
                     updateDot.classList.add('hidden');
                     updateStatusBox.className = "update-status-box";
                     updateStatusBox.textContent = "You are up to date! (v" + info.currentVersion + ")";
-                    btnDownloadUpdate.classList.add('hidden');
+                    btnInstallUpdate.classList.add('hidden');
                 }
             } else {
                 updateStatusBox.className = "update-status-box error";
