@@ -5,7 +5,7 @@ const path = require('node:path');
 
 test('ExtendScript files are syntactically valid JavaScript', () => {
     const hostPath = path.join(__dirname, '..', 'jsx', 'host.jsx');
-    const hostCode = fs.readFileSync(hostPath, 'utf8').replace('#include "json2.js"', '// include json2');
+    const hostCode = fs.readFileSync(hostPath, 'utf8');
     assert.doesNotThrow(() => {
         new Function(hostCode);
     }, 'host.jsx should be valid JS syntax');

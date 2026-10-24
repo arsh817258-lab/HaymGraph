@@ -77,6 +77,20 @@ test('Inverse conversion: AE KeyframeEase -> Cubic Bezier (Analyze)', async (t) 
         assert.ok(Math.abs(reconstructed.y2 - originalCurve.y2) < 0.01);
     });
 
+    await t.test('Roundtrip fidelity for boundary curve (0, 0.75, 0.25, 1)', () => {
+        const boundaryCurve = { x1: 0, y1: 0.75, x2: 0.25, y2: 1.0 };
+        const deltaV = 100;
+        const deltaT = 1.0;
+
+        const eases = HaymMath.bezierToEase(boundaryCurve, deltaV, deltaT);
+        const reconstructed = HaymMath.easeToBezier(eases.outEase, eases.inEase, deltaV, deltaT);
+
+        assert.equal(reconstructed.x1, 0);
+        assert.equal(reconstructed.y1, 0.75);
+        assert.equal(reconstructed.x2, 0.25);
+        assert.equal(reconstructed.y2, 1.0);
+    });
+
     await t.test('Fallback when deltaV is zero', () => {
         const outEase = { speed: 0, influence: 50 };
         const inEase = { speed: 0, influence: 50 };
@@ -138,14 +152,26 @@ test('Transformations: Reverse, Mirror, Flatten, Snapping', async (t) => {
         assert.equal(mirrored.y, 0.8); // 1 - 0.2
     });
 
-    await t.test('Ctrl-mirror X position (pull handles closer / apart horizontally)', () => {
-        // Dragging P1 to x=0.7 mirrors P2 x to 0.3 (coming closer together)
-        const x2 = HaymMath.mirrorXHandle(1, 0.7);
-        assert.equal(x2, 0.3);
+    await t.test('Ctrl-mirror (diagonal ease reflection: x2 = 1 - y1, y2 = 1 - x1)', () => {
+        // Reference 1: P1=(0, 0.75) -> P2=(0.25, 1)
+        const ref1 = HaymMath.mirrorDiagonalHandle(1, 0, 0.75);
+        assert.equal(ref1.x, 0.25);
+        assert.equal(ref1.y, 1.0);
 
-        // Dragging P2 to x=0.8 mirrors P1 x to 0.2
-        const x1 = HaymMath.mirrorXHandle(2, 0.8);
-        assert.equal(x1, 0.2);
+        // Reference 2: P1=(0, 0.5) -> P2=(0.5, 1)
+        const ref2 = HaymMath.mirrorDiagonalHandle(1, 0, 0.5);
+        assert.equal(ref2.x, 0.5);
+        assert.equal(ref2.y, 1.0);
+
+        // Reference 3: P1=(0.25, 0) -> P2=(1, 0.75)
+        const ref3 = HaymMath.mirrorDiagonalHandle(1, 0.25, 0);
+        assert.equal(ref3.x, 1.0);
+        assert.equal(ref3.y, 0.75);
+
+        // Reference 4: P1=(0.75, 0.25) -> P2=(0.75, 0.25)
+        const ref4 = HaymMath.mirrorDiagonalHandle(1, 0.75, 0.25);
+        assert.equal(ref4.x, 0.75);
+        assert.equal(ref4.y, 0.25);
     });
 
     await t.test('Flatten handles', () => {

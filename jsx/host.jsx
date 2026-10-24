@@ -4,7 +4,67 @@
  * multi-property application, and Position Overshoot separation.
  */
 
-#include "json2.js"
+if (typeof JSON !== "object") {
+    JSON = {};
+}
+(function () {
+    "use strict";
+    var rx_one = /^[\],:{}\s]*$/;
+    var rx_two = /\\(?:["\\\/bfnrt]|u[0-9a-fA-F]{4})/g;
+    var rx_three = /"[^"\\\n\r]*"|true|false|null|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?/g;
+    var rx_four = /(?:^|:|,)(?:\s*\[)+/g;
+    var rx_escapable = /[\\"\u0000-\u001f\u007f-\u009f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g;
+    var rx_dangerous = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g;
+
+    function quote(string) {
+        rx_escapable.lastIndex = 0;
+        return rx_escapable.test(string) ? '"' + string.replace(rx_escapable, function (a) {
+            var c = { '\b': '\\b', '\t': '\\t', '\n': '\\n', '\f': '\\f', '\r': '\\r', '"': '\\"', '\\': '\\\\' }[a];
+            return typeof c === 'string' ? c : '\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
+        }) + '"' : '"' + string + '"';
+    }
+
+    if (typeof JSON.stringify !== "function") {
+        JSON.stringify = function (value) {
+            if (value === null) return "null";
+            if (typeof value === "number") return isFinite(value) ? String(value) : "null";
+            if (typeof value === "boolean") return String(value);
+            if (typeof value === "string") return quote(value);
+            if (typeof value === "object") {
+                if (Object.prototype.toString.apply(value) === "[object Array]") {
+                    var a = [];
+                    for (var i = 0; i < value.length; i++) a.push(JSON.stringify(value[i]) || "null");
+                    return "[" + a.join(",") + "]";
+                }
+                var o = [];
+                for (var k in value) {
+                    if (Object.prototype.hasOwnProperty.call(value, k)) {
+                        var v = JSON.stringify(value[k]);
+                        if (v) o.push(quote(k) + ":" + v);
+                    }
+                }
+                return "{" + o.join(",") + "}";
+            }
+            return undefined;
+        };
+    }
+
+    if (typeof JSON.parse !== "function") {
+        JSON.parse = function (text) {
+            text = String(text);
+            rx_dangerous.lastIndex = 0;
+            if (rx_dangerous.test(text)) {
+                text = text.replace(rx_dangerous, function (a) {
+                    return "\\u" + ("0000" + a.charCodeAt(0).toString(16)).slice(-4);
+                });
+            }
+            if (rx_one.test(text.replace(rx_two, "@").replace(rx_three, "]").replace(rx_four, ""))) {
+                return eval("(" + text + ")");
+            }
+            throw new SyntaxError("JSON.parse");
+        };
+    }
+}());
 
 var HaymHost = (function () {
     "use strict";
@@ -167,8 +227,9 @@ var HaymHost = (function () {
         var outInfluence = clamp(x1 * 100.0, MIN_INFLUENCE, MAX_INFLUENCE);
         var inInfluence = clamp((1.0 - x2) * 100.0, MIN_INFLUENCE, MAX_INFLUENCE);
 
-        var denom1 = Math.max(x1, EPSILON);
-        var denom2 = Math.max(1.0 - x2, EPSILON);
+        // Actual horizontal run of handles in AE normalized time:
+        var effX1 = outInfluence / 100.0;
+        var effDx2 = inInfluence / 100.0;
 
         // Ensure keyframe interpolation is BEZIER and roving is OFF
         try {
@@ -188,8 +249,8 @@ var HaymHost = (function () {
             var dist = calculateSpatialDistance(v1, v2);
             var vAvgSpatial = dist / dt;
 
-            var outSpeedSpatial = (y1 / denom1) * vAvgSpatial;
-            var inSpeedSpatial = ((1.0 - y2) / denom2) * vAvgSpatial;
+            var outSpeedSpatial = (y1 / effX1) * vAvgSpatial;
+            var inSpeedSpatial = ((1.0 - y2) / effDx2) * vAvgSpatial;
 
             // In spatial properties without separated dimensions, speed cannot be negative
             if (outSpeedSpatial < 0) outSpeedSpatial = 0;
@@ -216,8 +277,8 @@ var HaymHost = (function () {
                 var dV_d = (v2[d] || 0) - (v1[d] || 0);
                 var vAvg_d = dV_d / dt;
 
-                var outSpd_d = (y1 / denom1) * vAvg_d;
-                var inSpd_d = ((1.0 - y2) / denom2) * vAvg_d;
+                var outSpd_d = (y1 / effX1) * vAvg_d;
+                var inSpd_d = ((1.0 - y2) / effDx2) * vAvg_d;
 
                 newOutArray1.push(new KeyframeEase(outSpd_d, outInfluence));
                 newInArray2.push(new KeyframeEase(inSpd_d, inInfluence));
@@ -230,8 +291,8 @@ var HaymHost = (function () {
             var dV = Number(v2) - Number(v1);
             var vAvg = dV / dt;
 
-            var outSpd = (y1 / denom1) * vAvg;
-            var inSpd = ((1.0 - y2) / denom2) * vAvg;
+            var outSpd = (y1 / effX1) * vAvg;
+            var inSpd = ((1.0 - y2) / effDx2) * vAvg;
 
             var curIn1 = prop.keyInTemporalEase(k1);
             var curOut2 = prop.keyOutTemporalEase(k2);
@@ -245,21 +306,46 @@ var HaymHost = (function () {
     }
 
     /**
-     * Main Apply API: Applies the cubic bezier curve to all selected keyframes.
-     * Everything wrapped in a single undo group.
+     * Direct Apply API: Accepts raw numbers directly, bypassing JSON.parse entirely.
+     */
+    function applyBezierValues(x1, y1, x2, y2) {
+        return applyBezierWithCurve({
+            x1: Number(x1),
+            y1: Number(y1),
+            x2: Number(x2),
+            y2: Number(y2)
+        });
+    }
+
+    /**
+     * Main Apply API: Accepts JSON payload or parsed object.
      */
     function applyBezier(payloadJson) {
         var payload;
-        try {
-            payload = JSON.parse(payloadJson);
-        } catch (e) {
-            return JSON.stringify({ success: false, message: "Invalid JSON payload: " + e.toString() });
+        if (typeof payloadJson === "object" && payloadJson !== null) {
+            payload = payloadJson;
+        } else {
+            try {
+                // Direct eval is fast and avoids regex quirks in ExtendScript
+                payload = eval("(" + payloadJson + ")");
+            } catch (e) {
+                try {
+                    payload = JSON.parse(payloadJson);
+                } catch (e2) {
+                    return JSON.stringify({ success: false, message: "Invalid JSON payload: " + e2.toString() });
+                }
+            }
         }
 
-        var curve = payload.curve;
+        var curve = (payload && payload.curve) ? payload.curve : payload;
         if (!curve) {
             return JSON.stringify({ success: false, message: "No curve specified in payload." });
         }
+
+        return applyBezierWithCurve(curve);
+    }
+
+    function applyBezierWithCurve(curve) {
 
         var comp = app.project ? app.project.activeItem : null;
         if (!comp || !(comp instanceof CompItem)) {
@@ -399,30 +485,51 @@ var HaymHost = (function () {
             var outEase = outEaseArr && outEaseArr.length > 0 ? outEaseArr[0] : null;
             var inEase = inEaseArr && inEaseArr.length > 0 ? inEaseArr[0] : null;
 
-            var outInf = outEase ? outEase.influence : 33.33;
-            var inInf = inEase ? inEase.influence : 33.33;
-            var outSpd = outEase ? outEase.speed : 0;
-            var inSpd = inEase ? inEase.speed : 0;
-
-            var x1 = clamp(outInf / 100.0, 0.001, 1.0);
-            var x2 = clamp(1.0 - (inInf / 100.0), 0.0, 0.999);
-
             var dV = 0;
             if (prop.isSpatial) {
                 dV = calculateSpatialDistance(v1, v2);
             } else if (prop.propertyValueType === PropertyValueType.TwoD || prop.propertyValueType === PropertyValueType.ThreeD) {
-                dV = (v2[0] || 0) - (v1[0] || 0); // Analyze first dimension
+                var dims = (prop.propertyValueType === PropertyValueType.ThreeD) ? 3 : 2;
+                var maxDelta = 0;
+                var bestDim = 0;
+                for (var d = 0; d < dims; d++) {
+                    var diff = Math.abs((v2[d] || 0) - (v1[d] || 0));
+                    if (diff > maxDelta) {
+                        maxDelta = diff;
+                        bestDim = d;
+                    }
+                }
+                dV = (v2[bestDim] || 0) - (v1[bestDim] || 0);
+                if (outEaseArr && outEaseArr[bestDim]) outEase = outEaseArr[bestDim];
+                if (inEaseArr && inEaseArr[bestDim]) inEase = inEaseArr[bestDim];
             } else {
                 dV = Number(v2) - Number(v1);
             }
+
+            var outInf = clamp(outEase ? outEase.influence : 33.33, MIN_INFLUENCE, MAX_INFLUENCE);
+            var inInf = clamp(inEase ? inEase.influence : 33.33, MIN_INFLUENCE, MAX_INFLUENCE);
+            var outSpd = Number(outEase ? outEase.speed : 0);
+            var inSpd = Number(inEase ? inEase.speed : 0);
+
+            var effX1 = outInf / 100.0;
+            var effDx2 = inInf / 100.0;
+
+            // Normalized X coordinates with boundary snapping for 0.0 and 1.0
+            var x1 = effX1;
+            if (x1 <= 0.0015) x1 = 0.0;
+            if (x1 >= 0.999) x1 = 1.0;
+
+            var x2 = 1.0 - effDx2;
+            if (x2 <= 0.001) x2 = 0.0;
+            if (x2 >= 0.9985) x2 = 1.0;
 
             var y1 = 0.0;
             var y2 = 1.0;
 
             if (Math.abs(dV) >= EPSILON) {
                 var vAvg = dV / dt;
-                y1 = (outSpd / vAvg) * x1;
-                y2 = 1.0 - ((inSpd / vAvg) * (1.0 - x2));
+                y1 = (outSpd / vAvg) * effX1;
+                y2 = 1.0 - ((inSpd / vAvg) * effDx2);
             }
 
             var curCurve = {
@@ -464,6 +571,18 @@ var HaymHost = (function () {
     }
 
     /**
+     * Direct Separate & Apply API: Accepts raw numbers directly.
+     */
+    function separateAndApplyValues(x1, y1, x2, y2) {
+        return executeSeparateAndApply({
+            x1: Number(x1),
+            y1: Number(y1),
+            x2: Number(x2),
+            y2: Number(y2)
+        });
+    }
+
+    /**
      * Position Overshoot Fixer:
      * Separates dimensions on spatial Position properties,
      * remaps key times to the newly created X/Y properties,
@@ -471,17 +590,29 @@ var HaymHost = (function () {
      */
     function separateAndApply(payloadJson) {
         var payload;
-        try {
-            payload = JSON.parse(payloadJson);
-        } catch (e) {
-            return JSON.stringify({ success: false, message: "Invalid JSON payload: " + e.toString() });
+        if (typeof payloadJson === "object" && payloadJson !== null) {
+            payload = payloadJson;
+        } else {
+            try {
+                payload = eval("(" + payloadJson + ")");
+            } catch (e) {
+                try {
+                    payload = JSON.parse(payloadJson);
+                } catch (e2) {
+                    return JSON.stringify({ success: false, message: "Invalid JSON payload: " + e2.toString() });
+                }
+            }
         }
 
-        var curve = payload.curve;
+        var curve = (payload && payload.curve) ? payload.curve : payload;
         if (!curve) {
             return JSON.stringify({ success: false, message: "No curve provided." });
         }
 
+        return executeSeparateAndApply(curve);
+    }
+
+    function executeSeparateAndApply(curve) {
         var comp = app.project ? app.project.activeItem : null;
         if (!comp || !(comp instanceof CompItem)) {
             return JSON.stringify({ success: false, message: "No active composition found." });
@@ -600,7 +731,9 @@ var HaymHost = (function () {
     return {
         checkSelectionStatus: checkSelectionStatus,
         applyBezier: applyBezier,
+        applyBezierValues: applyBezierValues,
         analyzeSelection: analyzeSelection,
-        separateAndApply: separateAndApply
+        separateAndApply: separateAndApply,
+        separateAndApplyValues: separateAndApplyValues
     };
 })();

@@ -25,6 +25,8 @@
     var btnApply = document.getElementById('btn-apply');
     var btnAnalyze = document.getElementById('btn-analyze');
     var btnReverse = document.getElementById('btn-reverse');
+    var btnCopy = document.getElementById('btn-copy');
+    var btnPaste = document.getElementById('btn-paste');
 
     // Position Overshoot Modal Elements
     var overshootModal = document.getElementById('overshoot-modal');
@@ -49,13 +51,18 @@
             onCurveChange: handleCurveChange
         });
 
-        // 2. Register key interest for Enter, Ctrl, Alt, Shift in CEP
+        // 2. Proactively reload latest ExtendScript host engine into AE memory
+        reloadHostScript();
+
+        // 2. Register key interest for Enter, Ctrl, Alt, Shift, Copy (C), Paste (V) in CEP
         try {
             var keyEventsInterest = JSON.stringify([
                 { keyCode: 13 }, // Enter
                 { keyCode: 17, ctrlKey: true }, // Ctrl
                 { keyCode: 18, altKey: true },  // Alt
-                { keyCode: 16, shiftKey: true } // Shift
+                { keyCode: 16, shiftKey: true }, // Shift
+                { keyCode: 67, ctrlKey: true }, // Ctrl+C
+                { keyCode: 86, ctrlKey: true }  // Ctrl+V
             ]);
             csInterface.registerKeyEventsInterest(keyEventsInterest);
         } catch (e) {}
@@ -67,6 +74,8 @@
             curveBox.reverseCurve();
             setStatus("Curve reversed", false);
         });
+        if (btnCopy) btnCopy.addEventListener('click', copyCurveToClipboard);
+        if (btnPaste) btnPaste.addEventListener('click', pasteCurveFromClipboard);
 
         // 4. Position Overshoot Modal Actions
         overshootBadge.addEventListener('click', openOvershootModal);
@@ -104,6 +113,15 @@
             } else if (e.key === 'Escape') {
                 closeOvershootModal();
                 closeSettingsModal();
+            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+                // Don't intercept if typing in an input
+                if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+                e.preventDefault();
+                copyCurveToClipboard();
+            } else if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+                if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+                e.preventDefault();
+                pasteCurveFromClipboard();
             }
         });
 
@@ -124,17 +142,138 @@
     }
 
     /**
-     * Curve change handler - updates extrema badge & overshoot UI.
+     * Copies current curve values to the system clipboard and internal storage.
+     */
+    function copyCurveToClipboard() {
+        var c = curveBox.curve;
+        var text = c.x1 + ", " + c.y1 + ", " + c.x2 + ", " + c.y2;
+        var jsonText = JSON.stringify({ x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2 });
+
+        try {
+            localStorage.setItem('haymgraph_clipboard_curve', jsonText);
+        } catch (e) {}
+
+        var copied = false;
+
+        // Method 1: Electron / Node.js clipboard (if enabled in CEP)
+        try {
+            if (typeof require === 'function') {
+                var electron = require('electron');
+                if (electron && electron.clipboard) {
+                    electron.clipboard.writeText(text);
+                    copied = true;
+                }
+            }
+        } catch (e) {}
+
+        // Method 2: Standard HTML document.execCommand('copy') with attached input
+        if (!copied) {
+            try {
+                var input = document.createElement('input');
+                input.setAttribute('value', text);
+                input.style.position = 'fixed';
+                input.style.top = '0';
+                input.style.left = '0';
+                input.style.opacity = '0';
+                input.style.pointerEvents = 'none';
+                document.body.appendChild(input);
+                input.focus();
+                input.select();
+                copied = document.execCommand('copy');
+                document.body.removeChild(input);
+            } catch (err) {}
+        }
+
+        // Method 3: Async navigator.clipboard
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).catch(function () {});
+        }
+
+        setStatus("Copied curve: " + text, true);
+    }
+
+    /**
+     * Pastes curve values from system clipboard or internal storage.
+     */
+    function pasteCurveFromClipboard() {
+        function applyParsed(data) {
+            if (!data) return false;
+            var x1, y1, x2, y2;
+
+            if (typeof data === 'object' && ('x1' in data)) {
+                x1 = Number(data.x1);
+                y1 = Number(data.y1);
+                x2 = Number(data.x2);
+                y2 = Number(data.y2);
+            } else if (typeof data === 'string') {
+                var clean = data.replace(/cubic-bezier\s*\(/i, '').replace(/\)/, '').trim();
+                var parts = clean.split(/[\s,]+/);
+                if (parts.length >= 4) {
+                    x1 = parseFloat(parts[0]);
+                    y1 = parseFloat(parts[1]);
+                    x2 = parseFloat(parts[2]);
+                    y2 = parseFloat(parts[3]);
+                }
+            }
+
+            if (!isNaN(x1) && !isNaN(y1) && !isNaN(x2) && !isNaN(y2)) {
+                curveBox.setCurve({ x1: x1, y1: y1, x2: x2, y2: y2 });
+                setStatus("Pasted curve: " + x1 + ", " + y1 + ", " + x2 + ", " + y2, true);
+                return true;
+            }
+            return false;
+        }
+
+        // Try Method 1: Electron / Node.js clipboard
+        try {
+            if (typeof require === 'function') {
+                var electron = require('electron');
+                if (electron && electron.clipboard) {
+                    var text = electron.clipboard.readText();
+                    if (applyParsed(text)) return;
+                }
+            }
+        } catch (e) {}
+
+        // Try Method 2: navigator.clipboard
+        if (navigator.clipboard && navigator.clipboard.readText) {
+            navigator.clipboard.readText().then(function (clipText) {
+                if (!applyParsed(clipText)) {
+                    fallbackInternalPaste();
+                }
+            }).catch(function () {
+                fallbackInternalPaste();
+            });
+            return;
+        }
+
+        fallbackInternalPaste();
+
+        function fallbackInternalPaste() {
+            try {
+                var stored = localStorage.getItem('haymgraph_clipboard_curve');
+                if (stored && applyParsed(JSON.parse(stored))) {
+                    return;
+                }
+            } catch (e) {}
+            setStatus("No valid curve on clipboard (format: x1, y1, x2, y2)", false);
+        }
+    }
+
+    /**
+     * Curve change handler - updates extrema badge & overshoot UI in real-time.
      */
     function handleCurveChange(curve, extrema, handleIndex) {
         currentExtrema = extrema;
 
         // Viewport extrema badge
-        badgeExtrema.textContent = "Y: [" + extrema.minY.toFixed(2) + ", " + extrema.maxY.toFixed(2) + "]";
-        if (extrema.hasOvershoot) {
-            badgeExtrema.classList.add('overshoot');
-        } else {
-            badgeExtrema.classList.remove('overshoot');
+        if (badgeExtrema) {
+            badgeExtrema.textContent = "Y: [" + extrema.minY.toFixed(2) + ", " + extrema.maxY.toFixed(2) + "]";
+            if (extrema.hasOvershoot) {
+                badgeExtrema.classList.add('overshoot');
+            } else {
+                badgeExtrema.classList.remove('overshoot');
+            }
         }
 
         updateOvershootUI();
@@ -181,15 +320,32 @@
     }
 
     /**
+     * Proactively loads host.jsx into ExtendScript memory.
+     */
+    function reloadHostScript() {
+        try {
+            var extPath = csInterface.getSystemPath(CSInterface.SystemPath ? CSInterface.SystemPath.EXTENSION : "extension");
+            if (extPath) {
+                var cleanPath = extPath.replace(/\\/g, "/");
+                if (cleanPath.charAt(cleanPath.length - 1) !== "/") {
+                    cleanPath += "/";
+                }
+                csInterface.evalScript('$.evalFile("' + cleanPath + 'jsx/host.jsx")');
+            }
+        } catch (e) {}
+    }
+
+    /**
      * Executes standard apply curve to host.
      */
     function executeApplyCurve() {
         setStatus("Applying curve...", false);
-        var payload = JSON.stringify({ curve: curveBox.curve });
+        var c = curveBox.curve;
+        var script = "(HaymHost.applyBezierValues ? HaymHost.applyBezierValues(" + c.x1 + ", " + c.y1 + ", " + c.x2 + ", " + c.y2 + ") : HaymHost.applyBezier({x1:" + c.x1 + ", y1:" + c.y1 + ", x2:" + c.x2 + ", y2:" + c.y2 + "}))";
 
-        csInterface.evalScript("HaymHost.applyBezier('" + payload + "')", function (resStr) {
+        csInterface.evalScript(script, function (resStr) {
             try {
-                var res = JSON.parse(resStr);
+                var res = (typeof resStr === "object") ? resStr : JSON.parse(resStr);
                 if (res.success) {
                     setStatus(res.message, true);
                 } else {
@@ -208,10 +364,11 @@
         closeOvershootModal();
         setStatus("Separating dimensions & applying...", false);
 
-        var payload = JSON.stringify({ curve: curveBox.curve });
-        csInterface.evalScript("HaymHost.separateAndApply('" + payload + "')", function (resStr) {
+        var c = curveBox.curve;
+        var script = "(HaymHost.separateAndApplyValues ? HaymHost.separateAndApplyValues(" + c.x1 + ", " + c.y1 + ", " + c.x2 + ", " + c.y2 + ") : HaymHost.separateAndApply({curve:{x1:" + c.x1 + ", y1:" + c.y1 + ", x2:" + c.x2 + ", y2:" + c.y2 + "}}))";
+        csInterface.evalScript(script, function (resStr) {
             try {
-                var res = JSON.parse(resStr);
+                var res = (typeof resStr === "object") ? resStr : JSON.parse(resStr);
                 if (res.success) {
                     setStatus(res.message, true);
                     hasSpatialNonSeparatedPosition = false;

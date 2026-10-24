@@ -9,17 +9,19 @@
     --bg-active: #323238;
     
     --border-color: rgba(255, 255, 255, 0.08);
-    --border-focus: rgba(255, 255, 255, 0.4);
+    --border-focus: #4096F3;
     
     --text-primary: #f4f4f5;
     --text-secondary: #a1a1aa;
     --text-muted: #71717a;
     
-    --accent-mono: #ffffff;
-    --accent-mono-dim: #e4e4e7;
-    --accent-mono-glow: rgba(255, 255, 255, 0.2);
+    --accent: #4096F3;
+    --accent-hover: #52a5ff;
+    --accent-active: #357ebd;
+    --accent-dim: rgba(64, 150, 243, 0.15);
+    --accent-mono: #4096F3;
     
-    --status-success: #ffffff;
+    --status-success: #4096F3;
     --status-warning: #e4e4e7;
     --status-danger: #a1a1aa;
     
@@ -76,16 +78,15 @@ body {
 .brand-icon {
     width: 18px;
     height: 18px;
-    background: #ffffff;
+    background: #4096F3;
     border-radius: 4px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
 }
 
 .brand-icon svg {
-    stroke: #111113;
+    stroke: #ffffff;
 }
 
 .brand-title {
@@ -99,6 +100,39 @@ body {
     display: flex;
     align-items: center;
     gap: 7px;
+}
+
+.header-mini-btn-group {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 1px;
+    gap: 1px;
+}
+
+.header-mini-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    border-radius: 3px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.header-mini-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+.header-mini-btn:active {
+    transform: scale(0.92);
 }
 
 .header-icon-btn {
@@ -129,8 +163,7 @@ body {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background-color: #ffffff;
-    box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+    background-color: #4096F3;
 }
 
 .update-dot.hidden {
@@ -253,20 +286,18 @@ body {
 
 .action-icon-btn.btn-enter {
     flex: 1.5;
-    background: #ffffff;
-    color: #111113;
+    background: #4096F3;
+    color: #ffffff;
     border: none;
-    box-shadow: 0 4px 16px rgba(255, 255, 255, 0.15);
 }
 
 .action-icon-btn.btn-enter:hover {
-    box-shadow: 0 6px 20px rgba(255, 255, 255, 0.25);
-    background: #f4f4f5;
+    background: #52a5ff;
 }
 
 .action-icon-btn.btn-enter:active {
     transform: translateY(1px);
-    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.15);
+    background: #357ebd;
 }
 
 .action-icon-btn svg {
@@ -308,7 +339,6 @@ body {
 
 .status-dot.active {
     background-color: var(--status-success);
-    box-shadow: 0 0 6px var(--status-success);
 }
 
 /* Modal Dialog for Overshoot Fixer */
@@ -359,7 +389,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #ffffff;
+    color: #4096F3;
 }
 
 .modal-title {
@@ -382,8 +412,8 @@ body {
 }
 
 .btn-separate {
-    background: #ffffff;
-    color: #111113;
+    background: #4096F3;
+    color: #ffffff;
     border: none;
     border-radius: var(--radius-md);
     padding: 8px 12px;
@@ -391,12 +421,10 @@ body {
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 2px 10px rgba(255, 255, 255, 0.15);
 }
 
 .btn-separate:hover {
-    filter: brightness(0.95);
-    background: #f4f4f5;
+    background: #52a5ff;
 }
 
 .btn-modal-cancel {
@@ -436,9 +464,9 @@ body {
 }
 
 .setting-val-badge {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: #ffffff;
+    background: rgba(64, 150, 243, 0.12);
+    border: 1px solid rgba(64, 150, 243, 0.3);
+    color: #4096F3;
     font-family: var(--font-mono);
     font-size: 11px;
     padding: 2px 8px;
@@ -464,8 +492,7 @@ body {
 }
 
 .setting-input:focus {
-    border-color: rgba(255, 255, 255, 0.4);
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
+    border-color: #4096F3;
 }
 
 .setting-toggle-row {
@@ -483,7 +510,7 @@ body {
 }
 
 .setting-toggle-label input[type="checkbox"] {
-    accent-color: #ffffff;
+    accent-color: #4096F3;
     width: 14px;
     height: 14px;
     cursor: pointer;

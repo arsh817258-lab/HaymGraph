@@ -79,19 +79,48 @@
     };
 
     /**
+     * Calculates the square plot metrics so the unit box [0, 1] is always 1:1 aspect ratio.
+     */
+    CurveBox.prototype._getPlotMetrics = function () {
+        var availW = Math.max(10, this.width - this.padding.left - this.padding.right);
+        var availH = Math.max(10, this.height - this.padding.top - this.padding.bottom);
+
+        // Account for current animated Y zoom span
+        var ySpan = this.viewport.currentMaxY - this.viewport.currentMinY;
+        if (Math.abs(ySpan) < 0.001) ySpan = 0.001;
+
+        // When curve is within standard [0, 1], ySpan is ~1.3 (with 0.15 padding on top & bottom).
+        // For a true 1:1 unit box (where unitWidth == unitHeight), the 1.0 unit box height in pixels
+        // equals plotH / ySpan.
+        // We ensure unit box width (unitW) == unit box height (unitH):
+        var unitSize = Math.min(availW, availH / ySpan);
+
+        var plotW = unitSize;
+        var plotH = unitSize * ySpan;
+
+        // Center horizontally and vertically within the available canvas area
+        var offsetX = this.padding.left + (availW - plotW) / 2;
+        var offsetY = this.padding.top + (availH - plotH) / 2;
+
+        return {
+            offsetX: offsetX,
+            offsetY: offsetY,
+            plotW: plotW,
+            plotH: plotH,
+            ySpan: ySpan
+        };
+    };
+
+    /**
      * Converts normalized [x, y] to canvas pixel coordinates [px, py].
      */
     CurveBox.prototype.toPixels = function (x, y) {
-        var plotW = this.width - this.padding.left - this.padding.right;
-        var plotH = this.height - this.padding.top - this.padding.bottom;
-
-        var px = this.padding.left + (x * plotW);
+        var m = this._getPlotMetrics();
+        var px = m.offsetX + (x * m.plotW);
 
         // Invert Y: 0 is at bottom (or baseline), 1 is at top of unit box
-        var ySpan = this.viewport.currentMaxY - this.viewport.currentMinY;
-        if (Math.abs(ySpan) < 0.001) ySpan = 0.001;
-        var normYRatio = (y - this.viewport.currentMinY) / ySpan;
-        var py = this.padding.top + ((1.0 - normYRatio) * plotH);
+        var normYRatio = (y - this.viewport.currentMinY) / m.ySpan;
+        var py = m.offsetY + ((1.0 - normYRatio) * m.plotH);
 
         return { px: px, py: py };
     };
@@ -100,14 +129,11 @@
      * Converts canvas pixel coordinates [px, py] to normalized [x, y].
      */
     CurveBox.prototype.toNormalized = function (px, py) {
-        var plotW = this.width - this.padding.left - this.padding.right;
-        var plotH = this.height - this.padding.top - this.padding.bottom;
+        var m = this._getPlotMetrics();
+        var normX = (px - m.offsetX) / m.plotW;
 
-        var normX = (px - this.padding.left) / plotW;
-
-        var normYRatio = 1.0 - ((py - this.padding.top) / plotH);
-        var ySpan = this.viewport.currentMaxY - this.viewport.currentMinY;
-        var normY = this.viewport.currentMinY + (normYRatio * ySpan);
+        var normYRatio = 1.0 - ((py - m.offsetY) / m.plotH);
+        var normY = this.viewport.currentMinY + (normYRatio * m.ySpan);
 
         return {
             x: HaymMath.clamp(normX, 0.0, 1.0),
@@ -432,8 +458,10 @@
                     self.curve.x2 = m2.x;
                     self.curve.y2 = m2.y;
                 } else if (e.ctrlKey || e.metaKey) {
-                    // Ctrl-mirror: mirror ONLY X position (coming closer / pulling apart)
-                    self.curve.x2 = HaymMath.mirrorXHandle(1, self.curve.x1);
+                    // Ctrl-mirror: diagonal reflection (xOpposite = 1 - ySource, yOpposite = 1 - xSource)
+                    var c2 = HaymMath.mirrorDiagonalHandle(1, self.curve.x1, self.curve.y1);
+                    self.curve.x2 = c2.x;
+                    self.curve.y2 = c2.y;
                 }
             } else if (handleIdx === 2) {
                 self.curve.x2 = Math.round(newX * 1000) / 1000;
@@ -445,8 +473,10 @@
                     self.curve.x1 = m1.x;
                     self.curve.y1 = m1.y;
                 } else if (e.ctrlKey || e.metaKey) {
-                    // Ctrl-mirror: mirror ONLY X position (coming closer / pulling apart)
-                    self.curve.x1 = HaymMath.mirrorXHandle(2, self.curve.x2);
+                    // Ctrl-mirror: diagonal reflection (xOpposite = 1 - ySource, yOpposite = 1 - xSource)
+                    var c1 = HaymMath.mirrorDiagonalHandle(2, self.curve.x2, self.curve.y2);
+                    self.curve.x1 = c1.x;
+                    self.curve.y1 = c1.y;
                 }
             }
 

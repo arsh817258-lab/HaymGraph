@@ -60,16 +60,18 @@
         var vAvg = dV / dt;
 
         // Out-ease on first key:
-        // influence = x1 * 100, clamped to [0.1, 100]
+        // influence clamped to AE valid range [0.1, 100]
         var outInfluence = clamp(Math.round(x1 * 1000000) / 10000.0, MIN_INFLUENCE, MAX_INFLUENCE);
-        var denom1 = Math.max(x1, EPSILON);
-        var outSpeed = (y1 / denom1) * vAvg;
+        // The actual horizontal run of the handle in AE is effX1 = outInfluence / 100
+        var effX1 = outInfluence / 100.0;
+        var outSpeed = Math.round(((y1 / effX1) * vAvg) * 10000) / 10000;
 
         // In-ease on second key:
-        // influence = (1 - x2) * 100, clamped to [0.1, 100]
+        // influence clamped to AE valid range [0.1, 100]
         var inInfluence = clamp(Math.round((1.0 - x2) * 1000000) / 10000.0, MIN_INFLUENCE, MAX_INFLUENCE);
-        var denom2 = Math.max(1.0 - x2, EPSILON);
-        var inSpeed = ((1.0 - y2) / denom2) * vAvg;
+        // The actual horizontal run of the incoming handle in AE is effDx2 = inInfluence / 100
+        var effDx2 = inInfluence / 100.0;
+        var inSpeed = Math.round((((1.0 - y2) / effDx2) * vAvg) * 10000) / 10000;
 
         return {
             outEase: {
@@ -103,26 +105,33 @@
         if (dt < EPSILON) dt = EPSILON;
         var dV = Number(deltaV);
 
-        var x1 = clamp(outInf / 100.0, 0.001, 1.0);
-        var x2 = clamp(1.0 - (inInf / 100.0), 0.0, 0.999);
+        var effX1 = outInf / 100.0;
+        var effDx2 = inInf / 100.0;
+
+        // Normalized X coordinates with boundary snapping for 0.0 and 1.0
+        var x1 = effX1;
+        if (x1 <= 0.0015) x1 = 0.0;
+        if (x1 >= 0.999) x1 = 1.0;
+
+        var x2 = 1.0 - effDx2;
+        if (x2 <= 0.001) x2 = 0.0;
+        if (x2 >= 0.9985) x2 = 1.0;
 
         var y1, y2;
 
         if (Math.abs(dV) < EPSILON) {
             // Fallback when deltaV is zero
-            // If speeds are zero, curve is flat
             if (Math.abs(outSpd) < EPSILON && Math.abs(inSpd) < EPSILON) {
                 y1 = 0.0;
                 y2 = 1.0;
             } else {
-                // If speeds exist on 0 deltaV, map relative to unit scale
-                y1 = clamp(outSpd * dt * x1, -2.0, 2.0);
-                y2 = clamp(1.0 - (inSpd * dt * (1.0 - x2)), -1.0, 3.0);
+                y1 = clamp(outSpd * dt * effX1, -2.0, 2.0);
+                y2 = clamp(1.0 - (inSpd * dt * effDx2), -1.0, 3.0);
             }
         } else {
             var vAvg = dV / dt;
-            y1 = (outSpd / vAvg) * x1;
-            y2 = 1.0 - ((inSpd / vAvg) * (1.0 - x2));
+            y1 = (outSpd / vAvg) * effX1;
+            y2 = 1.0 - ((inSpd / vAvg) * effDx2);
         }
 
         return {
@@ -227,18 +236,23 @@
     }
 
     /**
-     * Ctrl-mirror (Horizontal X-mirroring):
-     * Mirrors only the X position of the opposite handle (xOpposite = 1 - xSource),
-     * leaving its Y position completely untouched.
+     * Ctrl-mirror (Diagonal Ease Reflection across the 45-degree axis):
+     * Reflects the handle vector across the main diagonal (0,0) -> (1,1):
+     * (xOpposite, yOpposite) = (1 - ySource, 1 - xSource)
      *
-     * Example:
-     * - Handle 1 at (0.7, 0.0) [Ease-In] causes Handle 2's x to become 0.3 (1 - 0.7),
-     *   while Handle 2 keeps its y position (e.g. flat at 1.0).
-     * - Dragging Handle 1 closer to the center pulls Handle 2 equally closer to the center!
+     * Exact reference examples:
+     * - P1: (0, 0.75)   -> P2: (1 - 0.75, 1 - 0)    = (0.25, 1.0)
+     * - P1: (0, 0.50)   -> P2: (1 - 0.50, 1 - 0)    = (0.50, 1.0)
+     * - P1: (0.25, 0)   -> P2: (1 - 0, 1 - 0.25)    = (1.0, 0.75)
+     * - P1: (0.75, 0.25)-> P2: (1 - 0.25, 1 - 0.75) = (0.75, 0.25)
      */
-    function mirrorXHandle(sourceHandleIndex, sourceX) {
-        var targetX = clamp(1.0 - sourceX, 0.0, 1.0);
-        return Math.round(targetX * 1000) / 1000;
+    function mirrorDiagonalHandle(sourceHandleIndex, sourceX, sourceY) {
+        var targetX = clamp(1.0 - sourceY, 0.0, 1.0);
+        var targetY = 1.0 - sourceX;
+        return {
+            x: Math.round(targetX * 1000) / 1000,
+            y: Math.round(targetY * 1000) / 1000
+        };
     }
 
     /**
@@ -344,7 +358,7 @@
         computeCurveExtrema: computeCurveExtrema,
         reverseCurve: reverseCurve,
         mirrorHandle: mirrorHandle,
-        mirrorXHandle: mirrorXHandle,
+        mirrorDiagonalHandle: mirrorDiagonalHandle,
         flattenHandle: flattenHandle,
         snapHandle: snapHandle,
         EPSILON: EPSILON,

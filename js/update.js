@@ -13,7 +13,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
 
-    var CURRENT_VERSION = "1.1.0";
+    var CURRENT_VERSION = "1.4.0";
     var DEFAULT_REPO = "arsh817258-lab/HaymGraph";
     var STORAGE_KEY_AUTOCHECK = "haymgraph_autocheck_update";
 
