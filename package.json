@@ -5,7 +5,8 @@
   "main": "index.html",
   "scripts": {
     "test": "node --test test/**/*.test.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "pack": "node scripts/package.js"
   },
   "keywords": [
     "after-effects",

@@ -19,8 +19,12 @@ mkdir -p "$EXT_DIR"
 TARGET_DIR="$EXT_DIR/HaymGraph"
 rm -rf "$TARGET_DIR"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ln -s "$SCRIPT_DIR" "$TARGET_DIR"
+if [ "$1" == "--link" ]; then
+    ln -s "$SCRIPT_DIR" "$TARGET_DIR"
+else
+    mkdir -p "$TARGET_DIR"
+    cp -R "$SCRIPT_DIR/"* "$TARGET_DIR/"
+fi
 
 echo ""
 echo "============================================================"

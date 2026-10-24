@@ -31,13 +31,13 @@ if exist "%TARGET_DIR%" (
     )
 )
 
-:: 4. Create Directory Junction (Symlink)
-echo [*] Linking extension to Adobe CEP directory...
-mklink /J "%TARGET_DIR%" "%~dp0" >nul 2>&1
-
-if %errorlevel% neq 0 (
-    echo [!] Could not create junction directly. Copying files instead...
-    mkdir "%TARGET_DIR%"
+:: 4. Install Extension Files
+if "%1"=="--link" (
+    echo [*] Linking extension to Adobe CEP directory...
+    mklink /J "%TARGET_DIR%" "%~dp0" >nul 2>&1
+) else (
+    echo [*] Installing extension files to Adobe CEP directory...
+    mkdir "%TARGET_DIR%" 2>nul
     xcopy "%~dp0*" "%TARGET_DIR%\" /E /I /H /Y >nul
 )
 
