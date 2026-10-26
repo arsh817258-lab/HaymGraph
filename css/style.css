@@ -385,6 +385,8 @@ body {
     display: flex;
     align-items: center;
     gap: 4px;
+    width: 100%;
+    min-width: 0;
     flex-shrink: 0;
 }
 
@@ -413,7 +415,9 @@ body {
 }
 
 .preset-name-input {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    width: 0;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
@@ -441,16 +445,18 @@ body {
     border: 1px solid var(--border-color);
     color: var(--text-primary);
     border-radius: var(--radius-sm);
-    padding: 0 7px;
+    padding: 0 6px;
     height: 22px;
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 500;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 3px;
     cursor: pointer;
     transition: all 0.15s ease;
     flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .btn-save-preset:hover {
@@ -613,7 +619,7 @@ body {
 #app-container.layout-horizontal .library-panel {
     flex: 0 0 var(--library-ratio);
     max-width: var(--library-ratio);
-    min-width: 120px;
+    min-width: 130px;
     max-height: none;
 }
 
