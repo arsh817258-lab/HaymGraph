@@ -91,18 +91,12 @@
         var ySpan = this.viewport.currentMaxY - this.viewport.currentMinY;
         if (Math.abs(ySpan) < 0.001) ySpan = 0.001;
 
-        // When curve is within standard [0, 1], ySpan is ~1.3 (with 0.15 padding on top & bottom).
-        // For a true 1:1 unit box (where unitWidth == unitHeight), the 1.0 unit box height in pixels
-        // equals plotH / ySpan.
-        // We ensure unit box width (unitW) == unit box height (unitH):
-        var unitSize = Math.min(availW, availH / ySpan);
+        // Time axis [0, 1] spans full available width so the box never squishes horizontally
+        var plotW = availW;
+        var plotH = availH;
 
-        var plotW = unitSize;
-        var plotH = unitSize * ySpan;
-
-        // Center horizontally and vertically within the available canvas area
-        var offsetX = this.padding.left + (availW - plotW) / 2;
-        var offsetY = this.padding.top + (availH - plotH) / 2;
+        var offsetX = this.padding.left;
+        var offsetY = this.padding.top;
 
         return {
             offsetX: offsetX,
@@ -290,29 +284,86 @@
         ctx.save();
         ctx.lineWidth = 1;
 
-        // Horizontal baseline and 100% lines
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-        var gridYValues = [-0.5, -0.25, 0.25, 0.5, 0.75, 1.25, 1.5];
-        for (var i = 0; i < gridYValues.length; i++) {
-            var gy = gridYValues[i];
-            if (gy >= this.viewport.currentMinY && gy <= this.viewport.currentMaxY) {
-                var pY = this.toPixels(0, gy).py;
-                ctx.beginPath();
-                ctx.moveTo(left, pY);
-                ctx.lineTo(right, pY);
-                ctx.stroke();
-            }
-        }
+        var plotTop = this.padding.top;
+        var plotBottom = this.height - this.padding.bottom;
 
-        // Vertical grid lines (0.25, 0.5, 0.75)
+        // 1. Vertical grid lines (0.25, 0.5, 0.75) aligned through the full height
         var gridXValues = [0.25, 0.5, 0.75];
         for (var j = 0; j < gridXValues.length; j++) {
             var gx = gridXValues[j];
             var pX = this.toPixels(gx, 0).px;
+
+            // Inside unit box: solid subtle line
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+            ctx.setLineDash([]);
             ctx.beginPath();
             ctx.moveTo(pX, top);
             ctx.lineTo(pX, bottom);
             ctx.stroke();
+
+            // Extended above unit box (overshoot zone): subtle dotted continuation
+            if (top > plotTop) {
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.035)";
+                ctx.setLineDash([2, 4]);
+                ctx.beginPath();
+                ctx.moveTo(pX, plotTop);
+                ctx.lineTo(pX, top);
+                ctx.stroke();
+            }
+
+            // Extended below unit box (negative overshoot zone): subtle dotted continuation
+            if (bottom < plotBottom) {
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.035)";
+                ctx.setLineDash([2, 4]);
+                ctx.beginPath();
+                ctx.moveTo(pX, bottom);
+                ctx.lineTo(pX, plotBottom);
+                ctx.stroke();
+            }
+        }
+
+        // 2. Horizontal internal grid lines inside unit box (0.25, 0.5, 0.75)
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
+        ctx.setLineDash([]);
+        var unitYValues = [0.25, 0.5, 0.75];
+        for (var k = 0; k < unitYValues.length; k++) {
+            var uy = unitYValues[k];
+            var pUy = this.toPixels(0, uy).py;
+            ctx.beginPath();
+            ctx.moveTo(left, pUy);
+            ctx.lineTo(right, pUy);
+            ctx.stroke();
+        }
+
+        // 3. Overshoot threshold guidelines (only rendered if in overshoot and within view)
+        var overshootGuides = [
+            { y: 1.5, label: "+50%" },
+            { y: 2.0, label: "+100%" },
+            { y: -0.5, label: "-50%" },
+            { y: -1.0, label: "-100%" }
+        ];
+
+        ctx.font = "8px 'JetBrains Mono', Consolas, monospace";
+        ctx.textBaseline = "middle";
+
+        for (var g = 0; g < overshootGuides.length; g++) {
+            var guide = overshootGuides[g];
+            var gy = guide.y;
+            if (gy >= this.viewport.currentMinY && gy <= this.viewport.currentMaxY) {
+                if (gy > 1.05 || gy < -0.05) {
+                    var pGy = this.toPixels(0, gy).py;
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
+                    ctx.setLineDash([4, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(left, pGy);
+                    ctx.lineTo(right, pGy);
+                    ctx.stroke();
+
+                    // Faint micro-label on the right edge
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+                    ctx.fillText(guide.label, right - 28, pGy - 5);
+                }
+            }
         }
 
         ctx.restore();
@@ -435,6 +486,18 @@
                 self.hasMovedWhileDragging = false;
                 if (e.preventDefault) e.preventDefault();
 
+                var m = self._getPlotMetrics();
+                self.dragOrigin = {
+                    handle: hit,
+                    startX: (hit === 1) ? self.curve.x1 : self.curve.x2,
+                    startY: (hit === 1) ? self.curve.y1 : self.curve.y2,
+                    mousePx: pt.px,
+                    mousePy: pt.py,
+                    plotW: m.plotW,
+                    plotH: m.plotH,
+                    ySpan: self.viewport.currentMaxY - self.viewport.currentMinY
+                };
+
                 // Safely capture pointer if supported (without throwing on Mac CEF)
                 if (e.pointerId !== undefined && canvas.setPointerCapture) {
                     try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
@@ -447,7 +510,7 @@
         function onMove(e) {
             var pt = getCanvasPoint(e);
 
-            if (!self.isDragging) {
+            if (!self.isDragging || !self.dragOrigin) {
                 var hoverHit = self.hitTest(pt.px, pt.py);
                 if (hoverHit !== self.hoveredHandle) {
                     self.hoveredHandle = hoverHit;
@@ -459,16 +522,24 @@
 
             if (e.preventDefault) e.preventDefault();
 
-            // Dragging handle
+            // Dragging handle with stable, 1:1 direct pixel-to-unit mapping
             self.hasMovedWhileDragging = true;
-            var norm = self.toNormalized(pt.px, pt.py);
             var handleIdx = self.activeHandle;
 
+            var deltaPx = pt.px - self.dragOrigin.mousePx;
+            var deltaPy = pt.py - self.dragOrigin.mousePy;
+
+            var rawX = self.dragOrigin.startX + (deltaPx / self.dragOrigin.plotW);
+            var rawY = self.dragOrigin.startY - (deltaPy / self.dragOrigin.plotH) * self.dragOrigin.ySpan;
+
+            var normX = HaymMath.clamp(rawX, 0.0, 1.0);
+            var normY = HaymMath.clamp(rawY, -2.5, 3.5);
+
             // Apply magnetic snapping (Shift bypasses)
-            var snapResult = HaymMath.snapHandle(handleIdx, norm.x, norm.y, {
+            var snapResult = HaymMath.snapHandle(handleIdx, normX, normY, {
                 bypassShift: !!e.shiftKey,
-                thresholdX: 0.025,
-                thresholdY: 0.035
+                thresholdX: 0.02,
+                thresholdY: 0.025
             });
 
             self.currentSnapInfo = (snapResult.snappedX || snapResult.snappedY) ? snapResult : null;
@@ -519,6 +590,7 @@
                 self.isDragging = false;
                 self.hasMovedWhileDragging = false;
                 self.activeHandle = null;
+                self.dragOrigin = null;
                 self.currentSnapInfo = null;
                 if (e && e.pointerId !== undefined && canvas.releasePointerCapture) {
                     try { canvas.releasePointerCapture(e.pointerId); } catch (err) {}

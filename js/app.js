@@ -71,6 +71,8 @@
     var btnSettingsClose = document.getElementById('btn-settings-close');
     var settingLibraryRatioSlider = document.getElementById('setting-library-ratio-slider');
     var settingLibraryRatioVal = document.getElementById('setting-library-ratio-val');
+    var settingLayoutGroup = document.getElementById('setting-layout-group');
+    var currentLayoutPref = 'auto';
     var currentUpdateTag = null;
 
     function init() {
@@ -228,6 +230,25 @@
                     setLibraryRatio(savedRatio);
                 } else {
                     setLibraryRatio(35);
+                }
+            } catch (e) {}
+        }
+
+        // Settings Library Layout Preference (auto, vertical, horizontal)
+        if (settingLayoutGroup) {
+            settingLayoutGroup.addEventListener('click', function (e) {
+                var btn = e.target.closest('.setting-segment-btn');
+                if (btn) {
+                    var layout = btn.getAttribute('data-layout');
+                    if (layout) setLayoutPreference(layout);
+                }
+            });
+            try {
+                var savedPref = localStorage.getItem('haymgraph_library_layout_pref');
+                if (savedPref) {
+                    setLayoutPreference(savedPref);
+                } else {
+                    setLayoutPreference('auto');
                 }
             } catch (e) {}
         }
@@ -1061,15 +1082,53 @@
     }
 
     /**
-     * Switches between horizontal and vertical layouts based on panel aspect ratio and width.
+     * Sets user library layout preference: 'auto', 'vertical', or 'horizontal'.
+     */
+    function setLayoutPreference(pref) {
+        if (pref !== 'auto' && pref !== 'vertical' && pref !== 'horizontal') {
+            pref = 'auto';
+        }
+        currentLayoutPref = pref;
+        try {
+            localStorage.setItem('haymgraph_library_layout_pref', pref);
+        } catch (e) {}
+
+        if (settingLayoutGroup) {
+            var btns = settingLayoutGroup.querySelectorAll('.setting-segment-btn');
+            for (var i = 0; i < btns.length; i++) {
+                if (btns[i].getAttribute('data-layout') === pref) {
+                    btns[i].classList.add('active');
+                } else {
+                    btns[i].classList.remove('active');
+                }
+            }
+        }
+
+        updateLayoutMode();
+    }
+
+    /**
+     * Switches between horizontal and vertical layouts based on preference and panel dimensions.
      */
     function updateLayoutMode() {
         if (!appContainer) return;
-        var isHorizontal = window.innerWidth > 330 && (window.innerWidth / Math.max(1, window.innerHeight)) >= 0.85;
+        var isHorizontal = false;
+
+        if (currentLayoutPref === 'horizontal') {
+            isHorizontal = true;
+        } else if (currentLayoutPref === 'vertical') {
+            isHorizontal = false;
+        } else {
+            // Auto mode: dynamic aspect ratio and width detection
+            isHorizontal = window.innerWidth > 330 && (window.innerWidth / Math.max(1, window.innerHeight)) >= 0.85;
+        }
+
         if (isHorizontal) {
             appContainer.classList.add('layout-horizontal');
+            appContainer.classList.remove('layout-vertical');
         } else {
             appContainer.classList.remove('layout-horizontal');
+            appContainer.classList.add('layout-vertical');
         }
         if (curveBox) {
             curveBox.resize();

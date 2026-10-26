@@ -627,7 +627,29 @@ body {
     max-height: calc(100% - 30px);
 }
 
-#app-container:not(.layout-horizontal) .library-panel {
+/* Vertical Forced Layout Mode */
+#app-container.layout-vertical .app-body {
+    flex-direction: column !important;
+}
+
+#app-container.layout-vertical .curve-section {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+#app-container.layout-vertical .library-panel {
+    flex: 0 0 auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: clamp(80px, calc(var(--library-ratio) * 3), 220px) !important;
+}
+
+#app-container.layout-vertical .preset-list {
+    max-height: 105px;
+}
+
+#app-container:not(.layout-horizontal):not(.layout-vertical) .library-panel {
     max-height: clamp(80px, calc(var(--library-ratio) * 3), 220px);
 }
 
@@ -881,6 +903,40 @@ body {
     font-size: 11px;
     padding: 2px 8px;
     border-radius: 12px;
+}
+
+.setting-segmented-group {
+    display: inline-flex;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    gap: 2px;
+}
+
+.setting-segment-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: var(--font-ui);
+}
+
+.setting-segment-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.setting-segment-btn.active {
+    background: #066CE7;
+    color: #ffffff;
+    font-weight: 600;
+    box-shadow: 0 0 6px rgba(6, 108, 231, 0.4);
 }
 
 .setting-field {

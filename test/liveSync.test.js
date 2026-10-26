@@ -279,4 +279,30 @@ test('Live Sync & Selection Property Detection', async (t) => {
         const seg5 = mockGetPropertySegments(3, {}, [1, 2, 3]);
         assert.deepEqual(seg5, [[1, 2], [2, 3]], 'Standard selection without roving must yield [[1, 2], [2, 3]]');
     });
+
+    await t.test('Library layout options (auto, vertical, horizontal) and overshoot grid refinements', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'style.css'), 'utf8');
+        const appJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+        const curveBoxJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'curveBox.js'), 'utf8');
+
+        // 1. Setting option for layout
+        assert.ok(html.includes('id="setting-layout-group"'), 'Settings modal must have #setting-layout-group');
+        assert.ok(html.includes('data-layout="auto"'), 'Settings modal must have auto layout button');
+        assert.ok(html.includes('data-layout="vertical"'), 'Settings modal must have vertical layout button');
+        assert.ok(html.includes('data-layout="horizontal"'), 'Settings modal must have horizontal layout button');
+
+        // 2. CSS rules for segmented controls and layout-vertical
+        assert.ok(css.includes('.setting-segmented-group'), 'CSS must define .setting-segmented-group');
+        assert.ok(css.includes('.setting-segment-btn'), 'CSS must define .setting-segment-btn');
+        assert.ok(css.includes('#app-container.layout-vertical'), 'CSS must define #app-container.layout-vertical');
+
+        // 3. app.js handles layout preference
+        assert.ok(appJs.includes('setLayoutPreference'), 'app.js must define setLayoutPreference');
+        assert.ok(appJs.includes('haymgraph_library_layout_pref'), 'app.js must persist layout preference in localStorage');
+
+        // 4. curveBox drag stability and overshoot grid
+        assert.ok(curveBoxJs.includes('dragOrigin'), 'curveBox.js must use dragOrigin for 1:1 stable handle dragging');
+        assert.ok(curveBoxJs.includes('overshootGuides'), 'curveBox.js must render clean overshoot guidelines');
+    });
 });
