@@ -27,6 +27,32 @@
     var btnReverse = document.getElementById('btn-reverse');
     var btnCopy = document.getElementById('btn-copy');
     var btnPaste = document.getElementById('btn-paste');
+    var btnLiveSync = document.getElementById('btn-live-sync');
+    var btnLibraryToggle = document.getElementById('btn-library-toggle');
+    var appContainer = document.getElementById('app-container');
+
+    // Presets Library DOM Elements & State
+    var libraryPanel = document.getElementById('library-panel');
+    var btnToggleLibrary = document.getElementById('btn-toggle-library');
+    var presetNameInput = document.getElementById('preset-name-input');
+    var btnSavePreset = document.getElementById('btn-save-preset');
+    var presetList = document.getElementById('preset-list');
+    var presets = [];
+    var draggedPresetIndex = null;
+
+    var DEFAULT_PRESETS = [
+        { id: 'p_ease_out', name: 'Ease Out', curve: { x1: 0.16, y1: 1.0, x2: 0.3, y2: 1.0 } },
+        { id: 'p_ease_in', name: 'Ease In', curve: { x1: 0.7, y1: 0.0, x2: 0.84, y2: 0.0 } },
+        { id: 'p_ease_in_out', name: 'Ease In Out', curve: { x1: 0.4, y1: 0.0, x2: 0.2, y2: 1.0 } },
+        { id: 'p_fast_out', name: 'Fast Out', curve: { x1: 0.05, y1: 0.95, x2: 0.15, y2: 1.0 } },
+        { id: 'p_overshoot', name: 'Overshoot', curve: { x1: 0.2, y1: 1.35, x2: 0.6, y2: 1.0 } },
+        { id: 'p_anticipate', name: 'Anticipate', curve: { x1: 0.35, y1: -0.25, x2: 0.6, y2: 1.0 } }
+    ];
+
+    var isLiveSyncEnabled = false;
+    var liveSyncInterval = null;
+    var lastSelectionFingerprint = "none";
+    var isApplyingCurve = false;
 
     // Position Overshoot Modal Elements
     var overshootModal = document.getElementById('overshoot-modal');
@@ -43,12 +69,15 @@
     var btnCheckUpdates = document.getElementById('btn-check-updates');
     var btnInstallUpdate = document.getElementById('btn-install-update');
     var btnSettingsClose = document.getElementById('btn-settings-close');
+    var settingLibraryRatioSlider = document.getElementById('setting-library-ratio-slider');
+    var settingLibraryRatioVal = document.getElementById('setting-library-ratio-val');
     var currentUpdateTag = null;
 
     function init() {
         // 1. Initialize CurveBox
         curveBox = new CurveBox('#curve-box-container', {
-            onCurveChange: handleCurveChange
+            onCurveChange: handleCurveChange,
+            onCurveRelease: handleCurveRelease
         });
 
         // 2. Proactively reload latest ExtendScript host engine into AE memory
@@ -80,6 +109,17 @@
         });
         if (btnCopy) btnCopy.addEventListener('click', copyCurveToClipboard);
         if (btnPaste) btnPaste.addEventListener('click', pasteCurveFromClipboard);
+
+        // Bind Live Sync toggle button
+        if (btnLiveSync) {
+            btnLiveSync.addEventListener('click', toggleLiveSync);
+            var savedLiveSync = localStorage.getItem('haymgraph_live_sync');
+            if (savedLiveSync === 'true') {
+                setLiveSyncState(true);
+            } else {
+                setLiveSyncState(false);
+            }
+        }
 
         // 4. Position Overshoot Modal Actions
         overshootBadge.addEventListener('click', openOvershootModal);
@@ -143,6 +183,58 @@
         if (HaymUpdater.isAutoCheckEnabled()) {
             setTimeout(checkUpdatesSilently, 2500);
         }
+
+        // 11. Presets Library Initialization
+        loadPresets();
+        renderPresetList();
+        if (btnSavePreset) {
+            btnSavePreset.addEventListener('click', saveCurrentPreset);
+        }
+        if (presetNameInput) {
+            presetNameInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveCurrentPreset();
+                }
+            });
+        }
+
+        // Bind Library Collapse/Expand Toggles (Header & Panel)
+        if (btnLibraryToggle) {
+            btnLibraryToggle.addEventListener('click', toggleLibrary);
+        }
+        if (btnToggleLibrary) {
+            btnToggleLibrary.addEventListener('click', toggleLibrary);
+        }
+
+        // Restore saved library collapse state
+        try {
+            var savedLibraryCollapsed = localStorage.getItem('haymgraph_library_collapsed');
+            if (savedLibraryCollapsed === 'true') {
+                setLibraryCollapsed(true);
+            } else {
+                setLibraryCollapsed(false);
+            }
+        } catch (e) {}
+
+        // Settings Library Ratio Slider
+        if (settingLibraryRatioSlider) {
+            settingLibraryRatioSlider.addEventListener('input', function () {
+                setLibraryRatio(settingLibraryRatioSlider.value);
+            });
+            try {
+                var savedRatio = localStorage.getItem('haymgraph_library_ratio');
+                if (savedRatio) {
+                    setLibraryRatio(savedRatio);
+                } else {
+                    setLibraryRatio(35);
+                }
+            } catch (e) {}
+        }
+
+        // 12. Auto-Resizing Layout (Vertical & Horizontal)
+        updateLayoutMode();
+        window.addEventListener('resize', updateLayoutMode);
     }
 
     /**
@@ -343,11 +435,13 @@
      * Executes standard apply curve to host.
      */
     function executeApplyCurve() {
+        isApplyingCurve = true;
         setStatus("Applying curve...", false);
         var c = curveBox.curve;
         var script = "(HaymHost.applyBezierValues ? HaymHost.applyBezierValues(" + c.x1 + ", " + c.y1 + ", " + c.x2 + ", " + c.y2 + ") : HaymHost.applyBezier({x1:" + c.x1 + ", y1:" + c.y1 + ", x2:" + c.x2 + ", y2:" + c.y2 + "}))";
 
         csInterface.evalScript(script, function (resStr) {
+            isApplyingCurve = false;
             try {
                 var res = (typeof resStr === "object") ? resStr : JSON.parse(resStr);
                 if (res.success) {
@@ -390,25 +484,134 @@
      * Analyze selected keyframes in AE.
      */
     function onAnalyzeClick() {
-        setStatus("Analyzing selection...", false);
+        performAnalyze(false);
+    }
+
+    /**
+     * Core Analyze implementation for both manual and live sync triggers.
+     */
+    function performAnalyze(isLive) {
+        if (!isLive) {
+            setStatus("Analyzing selection...", false);
+        }
         csInterface.evalScript("HaymHost.analyzeSelection()", function (resStr) {
             try {
                 var res = JSON.parse(resStr);
                 if (res.success && res.curve) {
                     curveBox.setCurve(res.curve);
-                    setStatus(res.message, true);
 
                     if (res.hasMixedCurves) {
-                        mixedIndicator.style.display = 'block';
+                        setWarningStatus(res.message);
                     } else {
-                        mixedIndicator.style.display = 'none';
+                        setStatus(res.message, true);
                     }
                 } else {
-                    setStatus(res.message || "Could not analyze", false);
+                    if (!isLive) {
+                        setStatus(res.message || "Could not analyze", false);
+                    }
                 }
             } catch (err) {
-                setStatus("Analyze error: " + err.toString(), false);
+                if (!isLive) {
+                    setStatus("Analyze error: " + err.toString(), false);
+                }
             }
+        });
+    }
+
+    /**
+     * Live Sync: Called when user moves and releases a handle in CurveBox.
+     */
+    function handleCurveRelease(curve) {
+        if (!isLiveSyncEnabled) return;
+
+        // Auto-apply curve to selected keyframes
+        refreshSelectionStatus(function (status) {
+            if (!status || !status.hasComp || status.totalKeys === 0) {
+                return;
+            }
+            if (currentExtrema.hasOvershoot && hasSpatialNonSeparatedPosition) {
+                openOvershootModal();
+            } else {
+                executeApplyCurve();
+            }
+        });
+    }
+
+    /**
+     * Toggles the Live Auto-Sync mode.
+     */
+    function toggleLiveSync() {
+        setLiveSyncState(!isLiveSyncEnabled);
+    }
+
+    function setLiveSyncState(enable) {
+        isLiveSyncEnabled = !!enable;
+        try {
+            localStorage.setItem('haymgraph_live_sync', isLiveSyncEnabled ? 'true' : 'false');
+        } catch (e) {}
+
+        if (btnLiveSync) {
+            if (isLiveSyncEnabled) {
+                btnLiveSync.classList.add('active');
+                btnLiveSync.setAttribute('aria-pressed', 'true');
+                btnLiveSync.title = "Live Sync: ON (Auto-analyzing selection & auto-applying on handle release)";
+            } else {
+                btnLiveSync.classList.remove('active');
+                btnLiveSync.setAttribute('aria-pressed', 'false');
+                btnLiveSync.title = "Live Sync: OFF (Click to auto-analyze on selection & auto-apply on release)";
+            }
+        }
+
+        if (isLiveSyncEnabled) {
+            startLiveSyncPolling();
+            setStatus("Live Sync enabled", true);
+        } else {
+            stopLiveSyncPolling();
+            setStatus("Live Sync disabled", false);
+            if (mixedIndicator) mixedIndicator.style.display = 'none';
+        }
+    }
+
+    function startLiveSyncPolling() {
+        stopLiveSyncPolling();
+        lastSelectionFingerprint = "none";
+        checkLiveSyncSelection();
+        liveSyncInterval = setInterval(checkLiveSyncSelection, 300);
+    }
+
+    function stopLiveSyncPolling() {
+        if (liveSyncInterval) {
+            clearInterval(liveSyncInterval);
+            liveSyncInterval = null;
+        }
+    }
+
+    /**
+     * Periodic selection checker when Live Sync is active.
+     */
+    function checkLiveSyncSelection() {
+        if (!isLiveSyncEnabled) return;
+        if (curveBox && curveBox.isDragging) return;
+        if (isApplyingCurve) return;
+        if (overshootModal && overshootModal.classList.contains('open')) return;
+        if (settingsModal && settingsModal.classList.contains('open')) return;
+
+        csInterface.evalScript("HaymHost.getSelectionFingerprint()", function (resStr) {
+            try {
+                var res = JSON.parse(resStr);
+                if (!res.hasKeys) {
+                    if (lastSelectionFingerprint !== "none") {
+                        lastSelectionFingerprint = "none";
+                        setStatus("Ready (No keyframes selected)", false);
+                    }
+                    return;
+                }
+
+                if (res.fingerprint !== lastSelectionFingerprint) {
+                    lastSelectionFingerprint = res.fingerprint;
+                    performAnalyze(true);
+                }
+            } catch (err) {}
         });
     }
 
@@ -431,10 +634,27 @@
 
     function setStatus(text, isActive) {
         statusMsg.textContent = text;
+        if (statusMsg.parentElement) {
+            statusMsg.parentElement.classList.remove('warning');
+        }
         if (isActive) {
             statusDot.className = 'status-dot active';
         } else {
             statusDot.className = 'status-dot';
+        }
+        if (mixedIndicator) {
+            mixedIndicator.style.display = 'none';
+        }
+    }
+
+    function setWarningStatus(text) {
+        statusMsg.textContent = text;
+        if (statusMsg.parentElement) {
+            statusMsg.parentElement.classList.add('warning');
+        }
+        statusDot.className = 'status-dot warning';
+        if (mixedIndicator) {
+            mixedIndicator.style.display = 'flex';
         }
     }
 
@@ -575,6 +795,285 @@
                 }
             }
         } catch (e) {}
+    }
+
+    /**
+     * Auto-resizes the interface between vertical and horizontal orientations
+     * dynamically depending on panel dimensions in After Effects.
+     */
+    function updateLayoutMode() {
+        var appContainer = document.getElementById('app-container');
+        if (!appContainer) return;
+        var w = window.innerWidth || document.documentElement.clientWidth;
+        var h = window.innerHeight || document.documentElement.clientHeight;
+        if (w >= 400 && w > h * 1.05) {
+            appContainer.classList.add('layout-horizontal');
+        } else {
+            appContainer.classList.remove('layout-horizontal');
+        }
+        if (curveBox) {
+            curveBox.resize();
+        }
+    }
+
+    /**
+     * Presets Library storage and management.
+     */
+    function loadPresets() {
+        try {
+            var stored = localStorage.getItem('haymgraph_presets');
+            if (stored) {
+                var parsed = JSON.parse(stored);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    presets = parsed;
+                    return;
+                }
+            }
+        } catch (e) {}
+        presets = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+        savePresets();
+    }
+
+    function savePresets() {
+        try {
+            localStorage.setItem('haymgraph_presets', JSON.stringify(presets));
+        } catch (e) {}
+    }
+
+    function generateCurveSvgPath(c) {
+        var x1 = typeof c.x1 === 'number' ? c.x1 : 0.333;
+        var y1 = typeof c.y1 === 'number' ? c.y1 : 0.0;
+        var x2 = typeof c.x2 === 'number' ? c.x2 : 0.667;
+        var y2 = typeof c.y2 === 'number' ? c.y2 : 1.0;
+
+        var px1 = 3 + x1 * 26;
+        var py1 = 29 - y1 * 26;
+        var px2 = 3 + x2 * 26;
+        var py2 = 29 - y2 * 26;
+
+        return 'M 3 29 C ' + px1.toFixed(1) + ' ' + py1.toFixed(1) + ', ' + px2.toFixed(1) + ' ' + py2.toFixed(1) + ', 29 3';
+    }
+
+    function renderPresetList() {
+        if (!presetList) return;
+        presetList.innerHTML = '';
+
+        if (!presets || presets.length === 0) {
+            var empty = document.createElement('div');
+            empty.className = 'preset-empty';
+            empty.textContent = 'No presets saved yet. Type a name and click Save.';
+            presetList.appendChild(empty);
+            return;
+        }
+
+        presets.forEach(function (preset, index) {
+            var item = document.createElement('div');
+            item.className = 'preset-item';
+            item.setAttribute('draggable', 'true');
+            item.setAttribute('data-index', index);
+            item.title = 'Click to load ' + preset.name + ' (Drag to reorder)';
+
+            // Preview Thumbnail SVG
+            var previewWrap = document.createElement('div');
+            previewWrap.className = 'preset-preview-wrap';
+            var pathD = generateCurveSvgPath(preset.curve);
+            previewWrap.innerHTML = '<svg class="preset-svg" viewBox="0 0 32 32">' +
+                '<line x1="3" y1="29" x2="29" y2="29" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>' +
+                '<line x1="3" y1="3" x2="29" y2="3" stroke="rgba(255,255,255,0.06)" stroke-dasharray="2,2"/>' +
+                '<path d="' + pathD + '" fill="none" stroke="#066CE7" stroke-width="2" stroke-linecap="round"/>' +
+                '</svg>';
+            item.appendChild(previewWrap);
+
+            // Title
+            var title = document.createElement('span');
+            title.className = 'preset-title';
+            title.textContent = preset.name;
+            item.appendChild(title);
+
+            // Delete Button
+            var btnDelete = document.createElement('button');
+            btnDelete.className = 'preset-btn-delete';
+            btnDelete.title = 'Delete preset';
+            btnDelete.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+            btnDelete.addEventListener('click', function (e) {
+                e.stopPropagation();
+                presets.splice(index, 1);
+                savePresets();
+                renderPresetList();
+                setStatus("Deleted preset", false);
+            });
+            item.appendChild(btnDelete);
+
+            // Click to load curve into CurveBox
+            item.addEventListener('click', function () {
+                var allItems = presetList.querySelectorAll('.preset-item');
+                allItems.forEach(function (el) { el.classList.remove('active'); });
+                item.classList.add('active');
+
+                curveBox.setCurve(preset.curve);
+                setStatus("Loaded preset: " + preset.name, true);
+                if (isLiveSyncEnabled) {
+                    handleCurveRelease(preset.curve);
+                }
+            });
+
+            // HTML5 Drag and Drop for Slotting Order
+            item.addEventListener('dragstart', function (e) {
+                draggedPresetIndex = index;
+                item.classList.add('dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', index);
+                }
+            });
+
+            item.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                if (e.dataTransfer) {
+                    e.dataTransfer.dropEffect = 'move';
+                }
+            });
+
+            item.addEventListener('dragenter', function (e) {
+                e.preventDefault();
+                if (draggedPresetIndex !== index) {
+                    item.classList.add('drag-over');
+                }
+            });
+
+            item.addEventListener('dragleave', function () {
+                item.classList.remove('drag-over');
+            });
+
+            item.addEventListener('drop', function (e) {
+                e.preventDefault();
+                item.classList.remove('drag-over');
+                if (draggedPresetIndex !== null && draggedPresetIndex !== index) {
+                    var moved = presets.splice(draggedPresetIndex, 1)[0];
+                    presets.splice(index, 0, moved);
+                    savePresets();
+                    renderPresetList();
+                    setStatus("Reordered preset: " + moved.name, true);
+                }
+            });
+
+            item.addEventListener('dragend', function () {
+                draggedPresetIndex = null;
+                var allItems = presetList.querySelectorAll('.preset-item');
+                allItems.forEach(function (el) {
+                    el.classList.remove('dragging');
+                    el.classList.remove('drag-over');
+                });
+            });
+
+            presetList.appendChild(item);
+        });
+    }
+
+    function saveCurrentPreset() {
+        if (!presetNameInput) return;
+        var name = presetNameInput.value.trim();
+        if (!name) {
+            name = "Preset " + (presets.length + 1);
+        }
+
+        var c = curveBox.curve;
+        var newPreset = {
+            id: 'preset_' + Date.now(),
+            name: name,
+            curve: {
+                x1: c.x1,
+                y1: c.y1,
+                x2: c.x2,
+                y2: c.y2
+            }
+        };
+
+        presets.push(newPreset);
+        savePresets();
+        presetNameInput.value = '';
+        renderPresetList();
+        setStatus("Saved preset: " + name, true);
+    }
+
+    /**
+     * Collapses or expands the Presets Library panel cleanly.
+     * When collapsed, the library completely disappears and CurveBox expands to 100%.
+     */
+    function setLibraryCollapsed(collapsed) {
+        if (!appContainer) return;
+        if (collapsed) {
+            appContainer.classList.add('library-collapsed');
+            if (libraryPanel) libraryPanel.classList.add('collapsed');
+            if (btnLibraryToggle) {
+                btnLibraryToggle.classList.remove('active');
+                btnLibraryToggle.setAttribute('aria-pressed', 'false');
+            }
+        } else {
+            appContainer.classList.remove('library-collapsed');
+            if (libraryPanel) libraryPanel.classList.remove('collapsed');
+            if (btnLibraryToggle) {
+                btnLibraryToggle.classList.add('active');
+                btnLibraryToggle.setAttribute('aria-pressed', 'true');
+            }
+        }
+        try {
+            localStorage.setItem('haymgraph_library_collapsed', collapsed ? 'true' : 'false');
+        } catch (e) {}
+
+        if (curveBox) {
+            setTimeout(function () {
+                curveBox.resize();
+            }, 40);
+        }
+    }
+
+    function toggleLibrary() {
+        var isCurrentlyCollapsed = appContainer ? (appContainer.classList.contains('library-collapsed') || (libraryPanel && libraryPanel.classList.contains('collapsed'))) : false;
+        setLibraryCollapsed(!isCurrentlyCollapsed);
+    }
+
+    /**
+     * Sets the width ratio of the Presets Library (15% to 60%).
+     */
+    function setLibraryRatio(ratio) {
+        var r = parseInt(ratio, 10);
+        if (isNaN(r) || r < 15 || r > 60) {
+            r = 35;
+        }
+        if (appContainer) {
+            appContainer.style.setProperty('--library-ratio', r + '%');
+        }
+        if (settingLibraryRatioVal) {
+            settingLibraryRatioVal.textContent = r + '%';
+        }
+        if (settingLibraryRatioSlider) {
+            settingLibraryRatioSlider.value = r;
+        }
+        try {
+            localStorage.setItem('haymgraph_library_ratio', r);
+        } catch (e) {}
+        if (curveBox) {
+            setTimeout(function () {
+                curveBox.resize();
+            }, 30);
+        }
+    }
+
+    /**
+     * Switches between horizontal and vertical layouts based on panel aspect ratio and width.
+     */
+    function updateLayoutMode() {
+        if (!appContainer) return;
+        var isHorizontal = window.innerWidth > 330 && (window.innerWidth / Math.max(1, window.innerHeight)) >= 0.85;
+        if (isHorizontal) {
+            appContainer.classList.add('layout-horizontal');
+        } else {
+            appContainer.classList.remove('layout-horizontal');
+        }
+        if (curveBox) {
+            curveBox.resize();
+        }
     }
 
     // Initialize once DOM is ready

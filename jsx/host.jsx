@@ -106,6 +106,117 @@ var HaymHost = (function () {
     }
 
     /**
+     * Rove Across Time Helper: Checks if a keyframe roves across time.
+     */
+    function isKeyRoving(prop, kIndex) {
+        if (!prop || !kIndex) return false;
+        try {
+            if (typeof prop.keyRoving === "function") {
+                return prop.keyRoving(kIndex) === true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    /**
+     * Sets or restores roving status for a keyframe.
+     */
+    function setKeyRoving(prop, kIndex, isRoving) {
+        if (!prop || !kIndex) return;
+        try {
+            if (typeof prop.setRovingAtKeyframe === "function") {
+                prop.setRovingAtKeyframe(kIndex, isRoving);
+                return;
+            }
+        } catch (e) {}
+        try {
+            if (typeof prop.setRovingAtKey === "function") {
+                prop.setRovingAtKey(kIndex, isRoving);
+            }
+        } catch (e2) {}
+    }
+
+    /**
+     * Finds the nearest preceding non-roving anchor key.
+     */
+    function findPrevNonRoving(prop, k) {
+        if (!isKeyRoving(prop, k)) return k;
+        for (var i = k - 1; i >= 1; i--) {
+            if (!isKeyRoving(prop, i)) return i;
+        }
+        return 1;
+    }
+
+    /**
+     * Finds the nearest succeeding non-roving anchor key.
+     */
+    function findNextNonRoving(prop, k) {
+        if (!isKeyRoving(prop, k)) return k;
+        for (var i = k + 1; i <= prop.numKeys; i++) {
+            if (!isKeyRoving(prop, i)) return i;
+        }
+        return prop.numKeys;
+    }
+
+    /**
+     * Resolves selected keys into animation segments between non-roving anchor keys.
+     * Intermediate roving keyframes are preserved and handled smoothly across the span,
+     * matching native After Effects Graph Editor behavior.
+     */
+    function getPropertySegments(prop, sortedKeys) {
+        if (!sortedKeys || sortedKeys.length === 0) return [];
+
+        var anchorIndices = [];
+        var anchorMap = {};
+
+        function addAnchor(idx) {
+            if (idx >= 1 && idx <= prop.numKeys && !anchorMap[idx]) {
+                anchorMap[idx] = true;
+                anchorIndices.push(idx);
+            }
+        }
+
+        if (sortedKeys.length === 1) {
+            var k = sortedKeys[0];
+            if (isKeyRoving(prop, k)) {
+                addAnchor(findPrevNonRoving(prop, k));
+                addAnchor(findNextNonRoving(prop, k));
+            } else {
+                if (k < prop.numKeys) {
+                    addAnchor(k);
+                    addAnchor(findNextNonRoving(prop, k + 1));
+                } else if (k > 1) {
+                    addAnchor(findPrevNonRoving(prop, k - 1));
+                    addAnchor(k);
+                }
+            }
+        } else {
+            for (var i = 0; i < sortedKeys.length; i++) {
+                var keyIdx = sortedKeys[i];
+                if (isKeyRoving(prop, keyIdx)) {
+                    addAnchor(findPrevNonRoving(prop, keyIdx));
+                    addAnchor(findNextNonRoving(prop, keyIdx));
+                } else {
+                    addAnchor(keyIdx);
+                }
+            }
+        }
+
+        anchorIndices.sort(function (a, b) { return a - b; });
+
+        var segments = [];
+        for (var j = 0; j < anchorIndices.length - 1; j++) {
+            var a1 = anchorIndices[j];
+            var a2 = anchorIndices[j + 1];
+            if (a1 < a2) {
+                segments.push([a1, a2]);
+            }
+        }
+
+        return segments;
+    }
+
+    /**
      * Gathers all selected properties across all selected layers
      * or active composition, filtering out unsupported types.
      */
@@ -231,10 +342,10 @@ var HaymHost = (function () {
         var effX1 = outInfluence / 100.0;
         var effDx2 = inInfluence / 100.0;
 
-        // Ensure keyframe interpolation is BEZIER and roving is OFF
+        // Ensure keyframe interpolation is BEZIER and roving is OFF on anchors
         try {
-            prop.setRovingAtKey(k1, false);
-            prop.setRovingAtKey(k2, false);
+            setKeyRoving(prop, k1, false);
+            setKeyRoving(prop, k2, false);
         } catch (e) {}
 
         try {
@@ -245,8 +356,15 @@ var HaymHost = (function () {
         var valType = prop.propertyValueType;
 
         if (prop.isSpatial) {
-            // Spatial property (Position): speed along path
-            var dist = calculateSpatialDistance(v1, v2);
+            // Spatial property (Position): speed along path through intermediate roving keys
+            var dist = 0;
+            if (k2 === k1 + 1) {
+                dist = calculateSpatialDistance(v1, v2);
+            } else {
+                for (var segK = k1; segK < k2; segK++) {
+                    dist += calculateSpatialDistance(prop.keyValue(segK), prop.keyValue(segK + 1));
+                }
+            }
             var vAvgSpatial = dist / dt;
 
             var outSpeedSpatial = (y1 / effX1) * vAvgSpatial;
@@ -264,6 +382,11 @@ var HaymHost = (function () {
 
             prop.setTemporalEaseAtKey(k1, currentIn1, newOut1);
             prop.setTemporalEaseAtKey(k2, newIn2, currentOut2);
+
+            // Preserve intermediate roving keyframes so Rove Across Time is never broken
+            for (var r = k1 + 1; r < k2; r++) {
+                setKeyRoving(prop, r, true);
+            }
         } else if (valType === PropertyValueType.TwoD || valType === PropertyValueType.ThreeD) {
             // Multi-dimensional non-spatial (Scale, etc.): one ease per dimension
             var dims = (valType === PropertyValueType.ThreeD) ? 3 : 2;
@@ -378,27 +501,12 @@ var HaymHost = (function () {
 
                 var propHadApply = false;
 
-                if (sortedKeys.length === 1) {
-                    // Segment rule for lone key: segment to next key, or previous key if at end
-                    var loneKey = sortedKeys[0];
-                    if (loneKey < prop.numKeys) {
-                        applyCurveToSegment(prop, loneKey, loneKey + 1, curve);
-                        appliedKeysCount += 1;
-                        propHadApply = true;
-                    } else if (loneKey > 1) {
-                        applyCurveToSegment(prop, loneKey - 1, loneKey, curve);
-                        appliedKeysCount += 1;
-                        propHadApply = true;
-                    }
-                } else {
-                    // For each pair of consecutive selected keys
-                    for (var i = 0; i < sortedKeys.length - 1; i++) {
-                        var kIndex1 = sortedKeys[i];
-                        var kIndex2 = sortedKeys[i + 1];
-                        applyCurveToSegment(prop, kIndex1, kIndex2, curve);
-                        appliedKeysCount += 1;
-                        propHadApply = true;
-                    }
+                var segments = getPropertySegments(prop, sortedKeys);
+                for (var s = 0; s < segments.length; s++) {
+                    var seg = segments[s];
+                    applyCurveToSegment(prop, seg[0], seg[1], curve);
+                    appliedKeysCount += 1;
+                    propHadApply = true;
                 }
 
                 if (propHadApply) {
@@ -432,8 +540,87 @@ var HaymHost = (function () {
     }
 
     /**
-     * Analyze API: Reads selected keys' eases, converts back to bezier,
-     * and reports if mixed curves exist.
+     * Calculates the cubic bezier curve for a single keyframe segment (k1 -> k2).
+     */
+    function analyzeSegmentCurve(prop, k1, k2) {
+        var t1 = prop.keyTime(k1);
+        var t2 = prop.keyTime(k2);
+        var dt = Math.abs(t2 - t1);
+        if (dt < EPSILON) dt = EPSILON;
+
+        var v1 = prop.keyValue(k1);
+        var v2 = prop.keyValue(k2);
+
+        var outEaseArr = prop.keyOutTemporalEase(k1);
+        var inEaseArr = prop.keyInTemporalEase(k2);
+
+        var outEase = outEaseArr && outEaseArr.length > 0 ? outEaseArr[0] : null;
+        var inEase = inEaseArr && inEaseArr.length > 0 ? inEaseArr[0] : null;
+
+        var dV = 0;
+        if (prop.isSpatial) {
+            if (k2 === k1 + 1) {
+                dV = calculateSpatialDistance(v1, v2);
+            } else {
+                for (var segK = k1; segK < k2; segK++) {
+                    dV += calculateSpatialDistance(prop.keyValue(segK), prop.keyValue(segK + 1));
+                }
+            }
+        } else if (prop.propertyValueType === PropertyValueType.TwoD || prop.propertyValueType === PropertyValueType.ThreeD) {
+            var dims = (prop.propertyValueType === PropertyValueType.ThreeD) ? 3 : 2;
+            var maxDelta = 0;
+            var bestDim = 0;
+            for (var d = 0; d < dims; d++) {
+                var diff = Math.abs((v2[d] || 0) - (v1[d] || 0));
+                if (diff > maxDelta) {
+                    maxDelta = diff;
+                    bestDim = d;
+                }
+            }
+            dV = (v2[bestDim] || 0) - (v1[bestDim] || 0);
+            if (outEaseArr && outEaseArr[bestDim]) outEase = outEaseArr[bestDim];
+            if (inEaseArr && inEaseArr[bestDim]) inEase = inEaseArr[bestDim];
+        } else {
+            dV = Number(v2) - Number(v1);
+        }
+
+        var outInf = clamp(outEase ? outEase.influence : 33.33, MIN_INFLUENCE, MAX_INFLUENCE);
+        var inInf = clamp(inEase ? inEase.influence : 33.33, MIN_INFLUENCE, MAX_INFLUENCE);
+        var outSpd = Number(outEase ? outEase.speed : 0);
+        var inSpd = Number(inEase ? inEase.speed : 0);
+
+        var effX1 = outInf / 100.0;
+        var effDx2 = inInf / 100.0;
+
+        // Normalized X coordinates with boundary snapping for 0.0 and 1.0
+        var x1 = effX1;
+        if (x1 <= 0.0015) x1 = 0.0;
+        if (x1 >= 0.999) x1 = 1.0;
+
+        var x2 = 1.0 - effDx2;
+        if (x2 <= 0.001) x2 = 0.0;
+        if (x2 >= 0.9985) x2 = 1.0;
+
+        var y1 = 0.0;
+        var y2 = 1.0;
+
+        if (Math.abs(dV) >= EPSILON) {
+            var vAvg = dV / dt;
+            y1 = (outSpd / vAvg) * effX1;
+            y2 = 1.0 - ((inSpd / vAvg) * effDx2);
+        }
+
+        return {
+            x1: Math.round(x1 * 1000) / 1000,
+            y1: Math.round(y1 * 1000) / 1000,
+            x2: Math.round(x2 * 1000) / 1000,
+            y2: Math.round(y2 * 1000) / 1000
+        };
+    }
+
+    /**
+     * Analyze API: Reads selected keys' eases across all selected properties,
+     * converts back to bezier, and reports if mixed curves or different properties exist.
      */
     function analyzeSelection() {
         var comp = app.project ? app.project.activeItem : null;
@@ -448,110 +635,45 @@ var HaymHost = (function () {
 
         var firstCurve = null;
         var hasMixedCurves = false;
-        var primaryPropName = "";
+        var propNames = [];
+        var propNamesMap = {};
         var totalSegments = 0;
+        var totalKeysCount = 0;
 
         for (var p = 0; p < props.length; p++) {
             var prop = props[p];
             var selKeys = prop.selectedKeys;
             if (!selKeys || selKeys.length === 0) continue;
 
+            totalKeysCount += selKeys.length;
+            var pName = prop.name || "Property";
+            if (!propNamesMap[pName]) {
+                propNamesMap[pName] = true;
+                propNames.push(pName);
+            }
+
             var sortedKeys = [];
             for (var k = 0; k < selKeys.length; k++) sortedKeys.push(selKeys[k]);
             sortedKeys.sort(function (a, b) { return a - b; });
 
-            var k1, k2;
-            if (sortedKeys.length >= 2) {
-                k1 = sortedKeys[0];
-                k2 = sortedKeys[1];
-            } else if (sortedKeys[0] < prop.numKeys) {
-                k1 = sortedKeys[0];
-                k2 = sortedKeys[0] + 1;
-            } else {
-                continue;
-            }
+            var pairs = getPropertySegments(prop, sortedKeys);
 
-            var t1 = prop.keyTime(k1);
-            var t2 = prop.keyTime(k2);
-            var dt = Math.abs(t2 - t1);
-            if (dt < EPSILON) dt = EPSILON;
+            for (var j = 0; j < pairs.length; j++) {
+                var pair = pairs[j];
+                var curCurve = analyzeSegmentCurve(prop, pair[0], pair[1]);
+                totalSegments++;
 
-            var v1 = prop.keyValue(k1);
-            var v2 = prop.keyValue(k2);
-
-            var outEaseArr = prop.keyOutTemporalEase(k1);
-            var inEaseArr = prop.keyInTemporalEase(k2);
-
-            var outEase = outEaseArr && outEaseArr.length > 0 ? outEaseArr[0] : null;
-            var inEase = inEaseArr && inEaseArr.length > 0 ? inEaseArr[0] : null;
-
-            var dV = 0;
-            if (prop.isSpatial) {
-                dV = calculateSpatialDistance(v1, v2);
-            } else if (prop.propertyValueType === PropertyValueType.TwoD || prop.propertyValueType === PropertyValueType.ThreeD) {
-                var dims = (prop.propertyValueType === PropertyValueType.ThreeD) ? 3 : 2;
-                var maxDelta = 0;
-                var bestDim = 0;
-                for (var d = 0; d < dims; d++) {
-                    var diff = Math.abs((v2[d] || 0) - (v1[d] || 0));
-                    if (diff > maxDelta) {
-                        maxDelta = diff;
-                        bestDim = d;
+                if (!firstCurve) {
+                    firstCurve = curCurve;
+                } else {
+                    // Check if this segment differs from first curve
+                    var diff = Math.abs(curCurve.x1 - firstCurve.x1) +
+                               Math.abs(curCurve.y1 - firstCurve.y1) +
+                               Math.abs(curCurve.x2 - firstCurve.x2) +
+                               Math.abs(curCurve.y2 - firstCurve.y2);
+                    if (diff > 0.05) {
+                        hasMixedCurves = true;
                     }
-                }
-                dV = (v2[bestDim] || 0) - (v1[bestDim] || 0);
-                if (outEaseArr && outEaseArr[bestDim]) outEase = outEaseArr[bestDim];
-                if (inEaseArr && inEaseArr[bestDim]) inEase = inEaseArr[bestDim];
-            } else {
-                dV = Number(v2) - Number(v1);
-            }
-
-            var outInf = clamp(outEase ? outEase.influence : 33.33, MIN_INFLUENCE, MAX_INFLUENCE);
-            var inInf = clamp(inEase ? inEase.influence : 33.33, MIN_INFLUENCE, MAX_INFLUENCE);
-            var outSpd = Number(outEase ? outEase.speed : 0);
-            var inSpd = Number(inEase ? inEase.speed : 0);
-
-            var effX1 = outInf / 100.0;
-            var effDx2 = inInf / 100.0;
-
-            // Normalized X coordinates with boundary snapping for 0.0 and 1.0
-            var x1 = effX1;
-            if (x1 <= 0.0015) x1 = 0.0;
-            if (x1 >= 0.999) x1 = 1.0;
-
-            var x2 = 1.0 - effDx2;
-            if (x2 <= 0.001) x2 = 0.0;
-            if (x2 >= 0.9985) x2 = 1.0;
-
-            var y1 = 0.0;
-            var y2 = 1.0;
-
-            if (Math.abs(dV) >= EPSILON) {
-                var vAvg = dV / dt;
-                y1 = (outSpd / vAvg) * effX1;
-                y2 = 1.0 - ((inSpd / vAvg) * effDx2);
-            }
-
-            var curCurve = {
-                x1: Math.round(x1 * 1000) / 1000,
-                y1: Math.round(y1 * 1000) / 1000,
-                x2: Math.round(x2 * 1000) / 1000,
-                y2: Math.round(y2 * 1000) / 1000
-            };
-
-            totalSegments++;
-
-            if (!firstCurve) {
-                firstCurve = curCurve;
-                primaryPropName = prop.name;
-            } else {
-                // Check if this segment differs from first curve
-                var diff = Math.abs(curCurve.x1 - firstCurve.x1) +
-                           Math.abs(curCurve.y1 - firstCurve.y1) +
-                           Math.abs(curCurve.x2 - firstCurve.x2) +
-                           Math.abs(curCurve.y2 - firstCurve.y2);
-                if (diff > 0.05) {
-                    hasMixedCurves = true;
                 }
             }
         }
@@ -560,13 +682,70 @@ var HaymHost = (function () {
             return JSON.stringify({ success: false, message: "No keyframe pairs found to analyze." });
         }
 
+        var differentPropsCount = propNames.length;
+        var hasDifferentProperties = hasMixedCurves;
+
+        var msg = "";
+        if (hasMixedCurves) {
+            msg = "Mixed curves detected" + (differentPropsCount > 1 ? (" (" + propNames.join(", ") + ")") : "");
+        } else {
+            msg = "Analyzed " + (differentPropsCount > 1 ? (differentPropsCount + " properties (" + propNames.join(", ") + ")") : propNames[0]);
+        }
+
         return JSON.stringify({
             success: true,
             curve: firstCurve,
             hasMixedCurves: hasMixedCurves,
-            propName: primaryPropName,
+            differentPropsCount: differentPropsCount,
+            propNames: propNames,
+            hasDifferentProperties: hasDifferentProperties,
+            totalKeysCount: totalKeysCount,
             totalSegments: totalSegments,
-            message: "Analyzed " + primaryPropName + (hasMixedCurves ? " (Mixed curves detected)" : "")
+            message: msg
+        });
+    }
+
+    /**
+     * Fast selection fingerprint check: Detects if keyframe selection has changed
+     * without full curve re-calculation.
+     */
+    function getSelectionFingerprint() {
+        var comp = app.project ? app.project.activeItem : null;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ hasKeys: false, fingerprint: "none" });
+        }
+
+        var props = getSelectedProperties(comp);
+        if (!props || props.length === 0) {
+            return JSON.stringify({ hasKeys: false, fingerprint: "none" });
+        }
+
+        var totalKeys = 0;
+        var parts = [];
+
+        for (var p = 0; p < props.length; p++) {
+            var prop = props[p];
+            var keys = prop.selectedKeys;
+            if (keys && keys.length > 0) {
+                totalKeys += keys.length;
+                var propId = prop.parentProperty ? (prop.parentProperty.name + "_" + prop.name + "_" + prop.propertyIndex) : (prop.name + "_" + prop.propertyIndex);
+                var keyIndices = [];
+                for (var k = 0; k < keys.length; k++) {
+                    keyIndices.push(keys[k]);
+                }
+                parts.push(propId + ":" + keyIndices.join(","));
+            }
+        }
+
+        if (totalKeys === 0) {
+            return JSON.stringify({ hasKeys: false, fingerprint: "none" });
+        }
+
+        var fingerprint = comp.id + "|" + parts.join(";");
+        return JSON.stringify({
+            hasKeys: true,
+            totalKeys: totalKeys,
+            fingerprint: fingerprint
         });
     }
 
@@ -636,8 +815,12 @@ var HaymHost = (function () {
                     // Regular property: apply directly
                     var selKeys = prop.selectedKeys;
                     if (selKeys && selKeys.length > 0) {
-                        for (var i = 0; i < selKeys.length - 1; i++) {
-                            applyCurveToSegment(prop, selKeys[i], selKeys[i + 1], curve);
+                        var regSorted = [];
+                        for (var rk = 0; rk < selKeys.length; rk++) regSorted.push(selKeys[rk]);
+                        regSorted.sort(function (a, b) { return a - b; });
+                        var regSegments = getPropertySegments(prop, regSorted);
+                        for (var rsi = 0; rsi < regSegments.length; rsi++) {
+                            applyCurveToSegment(prop, regSegments[rsi][0], regSegments[rsi][1], curve);
                             appliedKeysCount++;
                         }
                     }
@@ -730,6 +913,7 @@ var HaymHost = (function () {
 
     return {
         checkSelectionStatus: checkSelectionStatus,
+        getSelectionFingerprint: getSelectionFingerprint,
         applyBezier: applyBezier,
         applyBezierValues: applyBezierValues,
         analyzeSelection: analyzeSelection,

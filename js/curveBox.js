@@ -19,6 +19,7 @@
 
         this.options = options || {};
         this.onCurveChange = this.options.onCurveChange || function () {};
+        this.onCurveRelease = this.options.onCurveRelease || function () {};
 
         // Curve state: normalized [0, 1] for x; y is unbounded
         this.curve = {
@@ -40,6 +41,7 @@
         this.activeHandle = null; // 1, 2, or null
         this.hoveredHandle = null;
         this.isDragging = null;
+        this.hasMovedWhileDragging = false;
         this.lastClickTime = 0;
         this.lastClickHandle = null;
         this.currentSnapInfo = null;
@@ -430,6 +432,7 @@
             if (hit) {
                 self.activeHandle = hit;
                 self.isDragging = true;
+                self.hasMovedWhileDragging = false;
                 if (e.preventDefault) e.preventDefault();
 
                 // Safely capture pointer if supported (without throwing on Mac CEF)
@@ -457,6 +460,7 @@
             if (e.preventDefault) e.preventDefault();
 
             // Dragging handle
+            self.hasMovedWhileDragging = true;
             var norm = self.toNormalized(pt.px, pt.py);
             var handleIdx = self.activeHandle;
 
@@ -511,7 +515,9 @@
 
         function onEnd(e) {
             if (self.isDragging) {
+                var didMove = self.hasMovedWhileDragging;
                 self.isDragging = false;
+                self.hasMovedWhileDragging = false;
                 self.activeHandle = null;
                 self.currentSnapInfo = null;
                 if (e && e.pointerId !== undefined && canvas.releasePointerCapture) {
@@ -519,6 +525,9 @@
                 }
                 self.updateViewportTargets();
                 self.render();
+                if (didMove && self.onCurveRelease) {
+                    self.onCurveRelease(self.curve);
+                }
             }
         }
 
@@ -564,6 +573,9 @@
         this.updateViewportTargets();
         this.render();
         this._notifyChange(handleIndex);
+        if (this.onCurveRelease) {
+            this.onCurveRelease(this.curve);
+        }
     };
 
     /**
