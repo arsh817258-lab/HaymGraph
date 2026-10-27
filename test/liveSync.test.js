@@ -79,6 +79,16 @@ test('Live Sync & Selection Property Detection', async (t) => {
         box.onCurveRelease(box.curve);
         assert.ok(releasedCurve !== null, 'onCurveRelease should have received curve');
         assert.equal(releasedCurve.x1, box.curve.x1);
+
+        // Verify reverseCurve triggers onCurveRelease with flipped coordinates
+        box.curve = { x1: 0.16, y1: 1.0, x2: 0.3, y2: 1.0 };
+        releasedCurve = null;
+        box.reverseCurve();
+        assert.ok(releasedCurve !== null, 'reverseCurve must trigger onCurveRelease for Live Sync auto-application');
+        assert.equal(releasedCurve.x1, 0.7);
+        assert.equal(releasedCurve.y1, 0.0);
+        assert.equal(releasedCurve.x2, 0.84);
+        assert.equal(releasedCurve.y2, 0.0);
     });
 
     await t.test('Multiple properties with SAME curve do NOT trigger warning, ONLY mixed curves trigger warning', () => {
@@ -304,5 +314,97 @@ test('Live Sync & Selection Property Detection', async (t) => {
         // 4. curveBox drag stability and overshoot grid
         assert.ok(curveBoxJs.includes('dragOrigin'), 'curveBox.js must use dragOrigin for 1:1 stable handle dragging');
         assert.ok(curveBoxJs.includes('overshootGuides'), 'curveBox.js must render clean overshoot guidelines');
+    });
+
+    await t.test('Graph 1:1 aspect ratio guarantee and Save Preset modal dialog', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'style.css'), 'utf8');
+        const appJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+
+        // 1. Verify Save Preset Modal in HTML and removal of input from header
+        assert.ok(html.includes('id="save-preset-modal"'), 'HTML must contain #save-preset-modal');
+        assert.ok(html.includes('id="btn-save-preset-confirm"'), 'HTML must contain #btn-save-preset-confirm');
+        assert.ok(html.includes('id="btn-save-preset-cancel"'), 'HTML must contain #btn-save-preset-cancel');
+        assert.ok(html.includes('class="library-title"'), 'HTML library-header must have .library-title');
+
+        // Verify preset-name-input is inside the modal dialog, not in library-header
+        const headerIndex = html.indexOf('class="library-header"');
+        const listIndex = html.indexOf('id="preset-list"');
+        const headerMarkup = html.slice(headerIndex, listIndex);
+        assert.ok(!headerMarkup.includes('id="preset-name-input"'), 'library-header must NOT contain preset-name-input beside save icon');
+
+        // 2. Verify modal functions in app.js
+        assert.ok(appJs.includes('openSavePresetModal'), 'app.js must define openSavePresetModal');
+        assert.ok(appJs.includes('closeSavePresetModal'), 'app.js must define closeSavePresetModal');
+        assert.ok(appJs.includes('confirmSavePreset'), 'app.js must define confirmSavePreset');
+
+        // 3. Mathematical proof of 1:1 unit box aspect ratio in CurveBox
+        const CurveBox = require('../js/curveBox.js');
+
+        // Test helper to instantiate a mock CurveBox with specific container dimensions & viewport bounds
+        function createMockCurveBox(width, height, minY, maxY) {
+            const mockCanvas = {
+                getContext: () => ({
+                    scale: () => {},
+                    clearRect: () => {},
+                    fillRect: () => {},
+                    save: () => {},
+                    restore: () => {},
+                    strokeRect: () => {},
+                    beginPath: () => {},
+                    moveTo: () => {},
+                    lineTo: () => {},
+                    stroke: () => {},
+                    bezierCurveTo: () => {},
+                    arc: () => {},
+                    fill: () => {},
+                    createLinearGradient: () => ({ addColorStop: () => {} }),
+                    setLineDash: () => {}
+                }),
+                style: {},
+                width: width,
+                height: height,
+                addEventListener: () => {}
+            };
+            const mockContainer = {
+                getBoundingClientRect: () => ({ width: width, height: height }),
+                appendChild: () => {}
+            };
+
+            const cb = new CurveBox(mockContainer);
+            cb.width = width;
+            cb.height = height;
+            if (minY !== undefined && maxY !== undefined) {
+                cb.viewport.currentMinY = minY;
+                cb.viewport.currentMaxY = maxY;
+            }
+            return cb;
+        }
+
+        // Test Case A: Wide container (500x250) - normal curve
+        const wideBox = createMockCurveBox(500, 250, -0.15, 1.15);
+        const p00_wide = wideBox.toPixels(0, 0);
+        const p11_wide = wideBox.toPixels(1, 1);
+        const widthWide = p11_wide.px - p00_wide.px;
+        const heightWide = p00_wide.py - p11_wide.py;
+        assert.ok(Math.abs(widthWide - heightWide) < 0.0001, `Wide container unit box must be 1:1: width=${widthWide}, height=${heightWide}`);
+
+        // Test Case B: Tall container (200x500) - normal curve
+        const tallBox = createMockCurveBox(200, 500, -0.15, 1.15);
+        const p00_tall = tallBox.toPixels(0, 0);
+        const p11_tall = tallBox.toPixels(1, 1);
+        const widthTall = p11_tall.px - p00_tall.px;
+        const heightTall = p00_tall.py - p11_tall.py;
+        assert.ok(Math.abs(widthTall - heightTall) < 0.0001, `Tall container unit box must be 1:1: width=${widthTall}, height=${heightTall}`);
+
+        // Test Case C: Container with large overshoot (ySpan = 3.0: min = -0.8, max = 2.2)
+        // Horizontal width MUST stay fixed so graph never squishes into a tiny box
+        const overshootBox = createMockCurveBox(450, 300, -0.8, 2.2);
+        const p00_over = overshootBox.toPixels(0, 0);
+        const p11_over = overshootBox.toPixels(1, 1);
+        const widthOver = p11_over.px - p00_over.px;
+        const metrics = overshootBox._getPlotMetrics();
+        assert.ok(widthOver > 200, `Overshoot width must remain fixed and solid (> 200px): width=${widthOver}`);
+        assert.equal(widthOver, metrics.plotW, 'Width must match fixed plotW');
     });
 });

@@ -31,10 +31,10 @@
 
         // Dynamic Viewport state: animated min/max Y
         this.viewport = {
-            currentMinY: -0.15,
-            currentMaxY: 1.15,
-            targetMinY: -0.15,
-            targetMaxY: 1.15
+            currentMinY: -0.08,
+            currentMaxY: 1.08,
+            targetMinY: -0.08,
+            targetMaxY: 1.08
         };
 
         // Interaction state
@@ -46,8 +46,8 @@
         this.lastClickHandle = null;
         this.currentSnapInfo = null;
 
-        // Visual styling configuration
-        this.padding = { top: 28, right: 28, bottom: 28, left: 28 };
+        // Visual styling configuration: compact padding maximizes graph space
+        this.padding = { top: 16, right: 18, bottom: 16, left: 18 };
         this.handleRadius = 7.5;
         this.hitRadius = 22;
 
@@ -81,28 +81,50 @@
     };
 
     /**
-     * Calculates the square plot metrics so the unit box [0, 1] is always 1:1 aspect ratio.
+     * Calculates plot metrics:
+     * - In normal view [0, 1], the unit box is a clean 1:1 aspect ratio square.
+     * - During Y overshoot, width stays fixed so the graph never squishes horizontally,
+     *   while vertical space dynamically scales to fit the overshoot peak.
      */
     CurveBox.prototype._getPlotMetrics = function () {
         var availW = Math.max(10, this.width - this.padding.left - this.padding.right);
         var availH = Math.max(10, this.height - this.padding.top - this.padding.bottom);
 
-        // Account for current animated Y zoom span
+        // Account for current Y zoom span
         var ySpan = this.viewport.currentMaxY - this.viewport.currentMinY;
         if (Math.abs(ySpan) < 0.001) ySpan = 0.001;
 
-        // Time axis [0, 1] spans full available width so the box never squishes horizontally
-        var plotW = availW;
-        var plotH = availH;
+        // Normal standard span (roughly [-0.08, 1.08])
+        var normalYSpan = 1.16;
+        var baseNormalWidth = Math.max(10, Math.min(availW, availH / normalYSpan));
 
-        var offsetX = this.padding.left;
-        var offsetY = this.padding.top;
+        var plotW, unitHeight;
+        var isOvershoot = (this.viewport.currentMinY < -0.2) || (this.viewport.currentMaxY > 1.2);
+
+        if (!isOvershoot) {
+            // In normal view [0, 1], unit box is strictly 1:1 aspect ratio (width === height)
+            var normalUnitSize = Math.max(10, Math.min(availW, availH / ySpan));
+            plotW = normalUnitSize;
+            unitHeight = normalUnitSize;
+        } else {
+            // During Y overshoot, width stays fixed so the graph never squishes horizontally,
+            // while vertical space dynamically scales to fit the overshoot peak
+            plotW = baseNormalWidth;
+            unitHeight = Math.min(baseNormalWidth, availH / ySpan);
+        }
+
+        var plotH = unitHeight * ySpan;
+
+        // Center horizontally and vertically within available canvas area
+        var offsetX = this.padding.left + (availW - plotW) / 2;
+        var offsetY = this.padding.top + (availH - plotH) / 2;
 
         return {
             offsetX: offsetX,
             offsetY: offsetY,
             plotW: plotW,
             plotH: plotH,
+            unitHeight: unitHeight,
             ySpan: ySpan
         };
     };
@@ -147,11 +169,16 @@
         var rawMin = Math.min(0.0, extrema.minY, this.curve.y1, this.curve.y2);
         var rawMax = Math.max(1.0, extrema.maxY, this.curve.y1, this.curve.y2);
 
-        var span = rawMax - rawMin;
-        var pad = Math.max(0.15, span * 0.15);
-
-        this.viewport.targetMinY = rawMin - pad;
-        this.viewport.targetMaxY = rawMax + pad;
+        var isOvershoot = (rawMin < -0.01) || (rawMax > 1.01);
+        if (!isOvershoot) {
+            this.viewport.targetMinY = -0.08;
+            this.viewport.targetMaxY = 1.08;
+        } else {
+            var span = rawMax - rawMin;
+            var pad = Math.max(0.12, span * 0.12);
+            this.viewport.targetMinY = rawMin - pad;
+            this.viewport.targetMaxY = rawMax + pad;
+        }
     };
 
     /**
@@ -161,15 +188,18 @@
         var self = this;
         function loop() {
             var v = self.viewport;
-            var lerpSpeed = 0.14;
+            var lerpSpeed = 0.16;
 
-            var dMin = v.targetMinY - v.currentMinY;
-            var dMax = v.targetMaxY - v.currentMaxY;
+            // Only animate zoom when not actively dragging a handle to prevent cursor runaway/desync
+            if (!self.isDragging) {
+                var dMin = v.targetMinY - v.currentMinY;
+                var dMax = v.targetMaxY - v.currentMaxY;
 
-            if (Math.abs(dMin) > 0.001 || Math.abs(dMax) > 0.001) {
-                v.currentMinY += dMin * lerpSpeed;
-                v.currentMaxY += dMax * lerpSpeed;
-                self.render();
+                if (Math.abs(dMin) > 0.001 || Math.abs(dMax) > 0.001) {
+                    v.currentMinY += dMin * lerpSpeed;
+                    v.currentMaxY += dMax * lerpSpeed;
+                    self.render();
+                }
             }
 
             requestAnimationFrame(loop);
@@ -284,8 +314,9 @@
         ctx.save();
         ctx.lineWidth = 1;
 
-        var plotTop = this.padding.top;
-        var plotBottom = this.height - this.padding.bottom;
+        var m = this._getPlotMetrics();
+        var plotTop = m.offsetY;
+        var plotBottom = m.offsetY + m.plotH;
 
         // 1. Vertical grid lines (0.25, 0.5, 0.75) aligned through the full height
         var gridXValues = [0.25, 0.5, 0.75];
@@ -494,8 +525,7 @@
                     mousePx: pt.px,
                     mousePy: pt.py,
                     plotW: m.plotW,
-                    plotH: m.plotH,
-                    ySpan: self.viewport.currentMaxY - self.viewport.currentMinY
+                    unitHeight: m.unitHeight
                 };
 
                 // Safely capture pointer if supported (without throwing on Mac CEF)
@@ -522,7 +552,7 @@
 
             if (e.preventDefault) e.preventDefault();
 
-            // Dragging handle with stable, 1:1 direct pixel-to-unit mapping
+            // Dragging handle with stable, direct 1:1 pixel-to-unit mapping
             self.hasMovedWhileDragging = true;
             var handleIdx = self.activeHandle;
 
@@ -530,10 +560,28 @@
             var deltaPy = pt.py - self.dragOrigin.mousePy;
 
             var rawX = self.dragOrigin.startX + (deltaPx / self.dragOrigin.plotW);
-            var rawY = self.dragOrigin.startY - (deltaPy / self.dragOrigin.plotH) * self.dragOrigin.ySpan;
+            var rawY = self.dragOrigin.startY - (deltaPy / self.dragOrigin.unitHeight);
 
+            // Generous overshoot range (up to +/-15.0)
             var normX = HaymMath.clamp(rawX, 0.0, 1.0);
-            var normY = HaymMath.clamp(rawY, -2.5, 3.5);
+            var normY = HaymMath.clamp(rawY, -15.0, 15.0);
+
+            // Dynamically expand viewport boundary if dragged near or beyond canvas edges
+            if (normY > self.viewport.currentMaxY - 0.08) {
+                self.viewport.currentMaxY = normY + 0.15;
+                self.viewport.targetMaxY = self.viewport.currentMaxY;
+                var updatedM = self._getPlotMetrics();
+                self.dragOrigin.unitHeight = updatedM.unitHeight;
+                self.dragOrigin.mousePy = pt.py;
+                self.dragOrigin.startY = normY;
+            } else if (normY < self.viewport.currentMinY + 0.08) {
+                self.viewport.currentMinY = normY - 0.15;
+                self.viewport.targetMinY = self.viewport.currentMinY;
+                var updatedM = self._getPlotMetrics();
+                self.dragOrigin.unitHeight = updatedM.unitHeight;
+                self.dragOrigin.mousePy = pt.py;
+                self.dragOrigin.startY = normY;
+            }
 
             // Apply magnetic snapping (Shift bypasses)
             var snapResult = HaymMath.snapHandle(handleIdx, normX, normY, {
@@ -579,7 +627,6 @@
                 }
             }
 
-            self.updateViewportTargets();
             self.render();
             self._notifyChange(handleIdx);
         }
@@ -671,6 +718,9 @@
     CurveBox.prototype.reverseCurve = function () {
         var rev = HaymMath.reverseCurve(this.curve);
         this.setCurve(rev);
+        if (this.onCurveRelease) {
+            this.onCurveRelease(this.curve);
+        }
     };
 
     CurveBox.prototype._notifyChange = function (handleIndex) {

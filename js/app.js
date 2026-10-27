@@ -36,6 +36,9 @@
     var btnToggleLibrary = document.getElementById('btn-toggle-library');
     var presetNameInput = document.getElementById('preset-name-input');
     var btnSavePreset = document.getElementById('btn-save-preset');
+    var savePresetModal = document.getElementById('save-preset-modal');
+    var btnSavePresetConfirm = document.getElementById('btn-save-preset-confirm');
+    var btnSavePresetCancel = document.getElementById('btn-save-preset-cancel');
     var presetList = document.getElementById('preset-list');
     var presets = [];
     var draggedPresetIndex = null;
@@ -107,7 +110,9 @@
         btnAnalyze.addEventListener('click', onAnalyzeClick);
         btnReverse.addEventListener('click', function () {
             curveBox.reverseCurve();
-            setStatus("Curve reversed", false);
+            if (!isLiveSyncEnabled) {
+                setStatus("Curve reversed", false);
+            }
         });
         if (btnCopy) btnCopy.addEventListener('click', copyCurveToClipboard);
         if (btnPaste) btnPaste.addEventListener('click', pasteCurveFromClipboard);
@@ -159,6 +164,7 @@
             } else if (e.key === 'Escape') {
                 closeOvershootModal();
                 closeSettingsModal();
+                closeSavePresetModal();
             } else if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
                 // Don't intercept if typing in an input
                 if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
@@ -190,13 +196,29 @@
         loadPresets();
         renderPresetList();
         if (btnSavePreset) {
-            btnSavePreset.addEventListener('click', saveCurrentPreset);
+            btnSavePreset.addEventListener('click', openSavePresetModal);
+        }
+        if (btnSavePresetConfirm) {
+            btnSavePresetConfirm.addEventListener('click', confirmSavePreset);
+        }
+        if (btnSavePresetCancel) {
+            btnSavePresetCancel.addEventListener('click', closeSavePresetModal);
+        }
+        if (savePresetModal) {
+            savePresetModal.addEventListener('click', function (e) {
+                if (e.target === savePresetModal) {
+                    closeSavePresetModal();
+                }
+            });
         }
         if (presetNameInput) {
             presetNameInput.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    saveCurrentPreset();
+                    confirmSavePreset();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeSavePresetModal();
                 }
             });
         }
@@ -616,6 +638,7 @@
         if (isApplyingCurve) return;
         if (overshootModal && overshootModal.classList.contains('open')) return;
         if (settingsModal && settingsModal.classList.contains('open')) return;
+        if (savePresetModal && savePresetModal.classList.contains('open')) return;
 
         csInterface.evalScript("HaymHost.getSelectionFingerprint()", function (resStr) {
             try {
@@ -991,7 +1014,26 @@
         });
     }
 
-    function saveCurrentPreset() {
+    function openSavePresetModal() {
+        if (!savePresetModal) return;
+        if (presetNameInput) {
+            presetNameInput.value = "Preset " + (presets.length + 1);
+        }
+        savePresetModal.classList.add('open');
+        setTimeout(function () {
+            if (presetNameInput) {
+                presetNameInput.focus();
+                presetNameInput.select();
+            }
+        }, 50);
+    }
+
+    function closeSavePresetModal() {
+        if (!savePresetModal) return;
+        savePresetModal.classList.remove('open');
+    }
+
+    function confirmSavePreset() {
         if (!presetNameInput) return;
         var name = presetNameInput.value.trim();
         if (!name) {
@@ -1012,9 +1054,13 @@
 
         presets.push(newPreset);
         savePresets();
-        presetNameInput.value = '';
         renderPresetList();
+        closeSavePresetModal();
         setStatus("Saved preset: " + name, true);
+    }
+
+    function saveCurrentPreset() {
+        openSavePresetModal();
     }
 
     /**

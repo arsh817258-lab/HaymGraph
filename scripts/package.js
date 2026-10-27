@@ -42,7 +42,8 @@ for (const relPath of manifestFiles) {
     console.log('  + ' + relPath);
 }
 
-const zipName = 'HaymGraph-v1.5.0.zip';
+const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+const zipName = `HaymGraph-v${pkg.version}.zip`;
 const zipPath = path.join(rootDir, zipName);
 const aliasZipPath = path.join(rootDir, 'HaymGraph.zip');
 

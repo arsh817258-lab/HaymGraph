@@ -110,12 +110,14 @@
             <!-- Scrollable Presets Library Panel -->
             <section id="library-panel" class="library-panel" aria-label="Graph Presets Library">
                 <div class="library-header">
-                    <button id="btn-toggle-library" class="btn-toggle-library" title="Collapse / Expand Presets" aria-label="Toggle Library">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="chevron-icon">
-                            <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                    </button>
-                    <input id="preset-name-input" type="text" class="preset-name-input" placeholder="Preset name..." maxlength="24" />
+                    <div class="library-header-left">
+                        <button id="btn-toggle-library" class="btn-toggle-library" title="Collapse / Expand Presets" aria-label="Toggle Library">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="chevron-icon">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <span class="library-title">Presets</span>
+                    </div>
                     <button id="btn-save-preset" class="btn-save-preset" title="Save current curve as preset" aria-label="Save Preset">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -179,7 +181,7 @@
             <div class="modal-body settings-form">
                 <div class="setting-row">
                     <span class="setting-label">Current Version</span>
-                    <span id="setting-version-tag" class="setting-val-badge">v1.5.0</span>
+                    <span id="setting-version-tag" class="setting-val-badge">v1.5.1</span>
                 </div>
                 <div class="setting-slider-row">
                     <div class="setting-slider-header">
@@ -215,6 +217,28 @@
                 <button id="btn-check-updates" class="btn-separate">Check for Updates</button>
                 <button id="btn-install-update" class="btn-separate hidden">Update Now</button>
                 <button id="btn-settings-close" class="btn-modal-cancel">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Save Preset Modal Dialog -->
+    <div id="save-preset-modal" class="modal-backdrop">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                <div class="modal-title">Save Preset</div>
+            </div>
+            <div class="modal-body">
+                <div class="setting-label" style="margin-bottom: 8px;">Enter preset name:</div>
+                <input id="preset-name-input" type="text" class="preset-name-input" placeholder="e.g. Fast Out, Smooth Ease..." maxlength="24" style="width: 100%; height: 28px; font-size: 11.5px; padding: 4px 8px;" />
+            </div>
+            <div class="modal-actions">
+                <button id="btn-save-preset-confirm" class="btn-separate">Save</button>
+                <button id="btn-save-preset-cancel" class="btn-modal-cancel">Cancel</button>
             </div>
         </div>
     </div>
