@@ -17,6 +17,24 @@
     var DEFAULT_REPO = "arsh817258-lab/HaymGraph";
     var STORAGE_KEY_AUTOCHECK = "haymgraph_autocheck_update";
 
+    var DEFAULT_EXTENSION_FILES = [
+        "index.html",
+        "package.json",
+        "README.md",
+        "install.bat",
+        "install.sh",
+        ".debug",
+        "css/style.css",
+        "CSXS/manifest.xml",
+        "js/app.js",
+        "js/coreMath.js",
+        "js/csInterface.js",
+        "js/curveBox.js",
+        "js/update.js",
+        "jsx/host.jsx",
+        "jsx/json2.js"
+    ];
+
     function isAutoCheckEnabled() {
         try {
             var val = localStorage.getItem(STORAGE_KEY_AUTOCHECK);
@@ -151,8 +169,22 @@
                 return fetch("https://api.github.com/repos/" + repo + "/git/trees/main?recursive=1", {
                     headers: { 'Accept': 'application/vnd.github.v3+json' }
                 }).then(function (r) {
-                    if (!r.ok) throw new Error("Could not retrieve file list from GitHub.");
+                    if (!r.ok) {
+                        // GitHub REST API rate-limited (HTTP 403) or blocked:
+                        // Fall back to known extension files so in-place update succeeds via raw CDN without rate limit
+                        return {
+                            tree: DEFAULT_EXTENSION_FILES.map(function (p) {
+                                return { type: "blob", path: p };
+                            })
+                        };
+                    }
                     return r.json();
+                }).catch(function () {
+                    return {
+                        tree: DEFAULT_EXTENSION_FILES.map(function (p) {
+                            return { type: "blob", path: p };
+                        })
+                    };
                 });
             }
             return res.json();
@@ -330,6 +362,7 @@
         compareVersions: compareVersions,
         checkForUpdates: checkForUpdates,
         installUpdateInPlace: installUpdateInPlace,
-        openDownloadPage: openDownloadPage
+        openDownloadPage: openDownloadPage,
+        DEFAULT_EXTENSION_FILES: DEFAULT_EXTENSION_FILES
     };
 }));
