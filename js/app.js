@@ -72,11 +72,75 @@
     var btnCheckUpdates = document.getElementById('btn-check-updates');
     var btnInstallUpdate = document.getElementById('btn-install-update');
     var btnSettingsClose = document.getElementById('btn-settings-close');
+    var btnSettingsHeaderClose = document.getElementById('btn-settings-header-close');
     var settingLibraryRatioSlider = document.getElementById('setting-library-ratio-slider');
     var settingLibraryRatioVal = document.getElementById('setting-library-ratio-val');
     var settingLayoutGroup = document.getElementById('setting-layout-group');
     var currentLayoutPref = 'auto';
     var currentUpdateTag = null;
+
+    // Quick Action Tools Elements (Editing Jesus Zenmen Mode)
+    var quickToolsBar = document.getElementById('quick-tools-bar');
+    var btnQuickAdj = document.getElementById('btn-quick-adj');
+    var btnQuickNull = document.getElementById('btn-quick-null');
+    var btnQuickThird = document.getElementById('btn-quick-third');
+    var btnQuickSolid = document.getElementById('btn-quick-solid');
+    var btnQuickPrecomp = document.getElementById('btn-quick-precomp');
+    var btnQuickCamera = document.getElementById('btn-quick-camera');
+    var btnQuickLoop = document.getElementById('btn-quick-loop');
+    var btnQuickSplit = document.getElementById('btn-quick-split');
+    var quickThirdIcon = document.getElementById('quick-third-icon');
+    var quickThirdLabel = document.getElementById('quick-third-label');
+
+    // Settings Quick Tools Elements
+    var settingQuickToolsToggle = document.getElementById('setting-quick-tools-toggle');
+    var settingQuickToolsOptions = document.getElementById('setting-quick-tools-options');
+    var settingThirdActionSelect = document.getElementById('setting-third-action-select');
+    var currentThirdAction = 'center-anchor';
+
+    var DEFAULT_ZENMEN_TOOLS = {
+        adj: true,
+        null: true,
+        anchor: true,
+        solid: true,
+        precomp: false,
+        camera: false,
+        loop: false,
+        split: false
+    };
+    var activeZenmenTools = {
+        adj: true,
+        null: true,
+        anchor: true,
+        solid: true,
+        precomp: false,
+        camera: false,
+        loop: false,
+        split: false
+    };
+
+    var THIRD_ACTION_CONFIG = {
+        'center-anchor': {
+            label: 'Anchor',
+            title: 'Center Anchor Point (Moves anchor point to center without shifting layer)',
+            svg: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-width="1.8" /><circle cx="12" cy="12" r="3" stroke-width="2" /><line x1="12" y1="7" x2="12" y2="17" stroke-width="1.8" /><line x1="7" y1="12" x2="17" y2="12" stroke-width="1.8" /></svg>'
+        },
+        'loop-out': {
+            label: 'Loop',
+            title: 'Toggle loopOut() Expression (Cycle / PingPong / Off)',
+            svg: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" /><path d="M16 21h5v-5" /></svg>'
+        },
+        'camera-rig': {
+            label: 'Camera',
+            title: 'Add 3D Camera Rig (+ Controller Null)',
+            svg: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z" /><rect x="2" y="6" width="14" height="12" rx="2" /></svg>'
+        },
+        'precompose': {
+            label: 'Precomp',
+            title: 'Smart Pre-compose (Trimmed to selection bounds)',
+            svg: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg>'
+        }
+    };
 
     function init() {
         // 1. Initialize CurveBox
@@ -140,6 +204,7 @@
         // 5. Settings & Auto-Updater Actions
         btnSettings.addEventListener('click', openSettingsModal);
         btnSettingsClose.addEventListener('click', closeSettingsModal);
+        if (btnSettingsHeaderClose) btnSettingsHeaderClose.addEventListener('click', closeSettingsModal);
         btnCheckUpdates.addEventListener('click', triggerManualUpdateCheck);
         btnInstallUpdate.addEventListener('click', function () {
             startAutoUpdate(currentUpdateTag, "latest");
@@ -274,6 +339,186 @@
                 }
             } catch (e) {}
         }
+
+        // Quick Action Tools Event Listeners (Editing Jesus Zenmen Mode)
+        if (btnQuickAdj) {
+            btnQuickAdj.addEventListener('click', function () {
+                csInterface.evalScript("HaymHost.addAdjustmentLayer()", function (resStr) {
+                    try {
+                        var res = JSON.parse(resStr);
+                        if (res.success) {
+                            setStatus("Added " + (res.name || "Adjustment Layer"), true);
+                        } else {
+                            setStatus(res.error || "Could not add Adjustment Layer", false);
+                        }
+                    } catch (e) {
+                        setStatus("Adjustment Layer created", true);
+                    }
+                });
+            });
+        }
+
+        if (btnQuickNull) {
+            btnQuickNull.addEventListener('click', function () {
+                csInterface.evalScript("HaymHost.addCenterNull()", function (resStr) {
+                    try {
+                        var res = JSON.parse(resStr);
+                        if (res.success) {
+                            setStatus("Created " + (res.name || "Null") + " & parented", true);
+                        } else {
+                            setStatus(res.error || "Could not add Null", false);
+                        }
+                    } catch (e) {
+                        setStatus("Center Null created", true);
+                    }
+                });
+            });
+        }
+
+        if (btnQuickThird) {
+            btnQuickThird.addEventListener('click', executeThirdAction);
+        }
+
+        if (btnQuickSolid) {
+            btnQuickSolid.addEventListener('click', function (e) {
+                var isBlack = e.altKey;
+                var script = isBlack ? "HaymHost.addSolidLayer(0, 0, 0, 'Black Solid')" : "HaymHost.addSolidLayer(1, 1, 1, 'White Solid')";
+                csInterface.evalScript(script, function (resStr) {
+                    try {
+                        var res = JSON.parse(resStr);
+                        if (res.success) {
+                            setStatus("Added " + (res.name || "Solid Layer"), true);
+                        } else {
+                            setStatus(res.error || "Could not add Solid", false);
+                        }
+                    } catch (err) {
+                        setStatus("Solid Layer created", true);
+                    }
+                });
+            });
+        }
+
+        if (btnQuickPrecomp) {
+            btnQuickPrecomp.addEventListener('click', function () {
+                csInterface.evalScript("HaymHost.smartPrecompose()", function (resStr) {
+                    try {
+                        var res = JSON.parse(resStr);
+                        if (res.success) {
+                            setStatus("Precomposed: " + (res.name || "Comp"), true);
+                        } else {
+                            setStatus(res.error || "Could not precompose selection", false);
+                        }
+                    } catch (err) {
+                        setStatus("Precomposed selection", true);
+                    }
+                });
+            });
+        }
+
+        if (btnQuickCamera) {
+            btnQuickCamera.addEventListener('click', function () {
+                csInterface.evalScript("HaymHost.addCameraRig()", function (resStr) {
+                    try {
+                        var res = JSON.parse(resStr);
+                        if (res.success) {
+                            setStatus("Created 3D Camera Rig", true);
+                        } else {
+                            setStatus(res.error || "Could not create Camera Rig", false);
+                        }
+                    } catch (err) {
+                        setStatus("3D Camera Rig created", true);
+                    }
+                });
+            });
+        }
+
+        if (btnQuickLoop) {
+            btnQuickLoop.addEventListener('click', function () {
+                csInterface.evalScript("HaymHost.toggleLoopKeyframes()", function (resStr) {
+                    try {
+                        var res = JSON.parse(resStr);
+                        if (res.success) {
+                            setStatus("Toggled loopOut (" + (res.count || 0) + " prop(s))", true);
+                        } else {
+                            setStatus(res.error || "Could not toggle loopOut", false);
+                        }
+                    } catch (err) {
+                        setStatus("loopOut toggled", true);
+                    }
+                });
+            });
+        }
+
+        if (btnQuickSplit) {
+            btnQuickSplit.addEventListener('click', function () {
+                csInterface.evalScript("HaymHost.splitLayersAtPlayhead()", function (resStr) {
+                    try {
+                        var res = JSON.parse(resStr);
+                        if (res.success) {
+                            setStatus("Split " + (res.count || 0) + " layer(s) at playhead", true);
+                        } else {
+                            setStatus(res.error || "Could not split layer", false);
+                        }
+                    } catch (err) {
+                        setStatus("Layer split at playhead", true);
+                    }
+                });
+            });
+        }
+
+        if (settingQuickToolsToggle) {
+            settingQuickToolsToggle.addEventListener('change', function () {
+                setQuickToolsEnabled(settingQuickToolsToggle.checked);
+            });
+        }
+
+        if (settingThirdActionSelect) {
+            settingThirdActionSelect.addEventListener('change', function () {
+                setThirdAction(settingThirdActionSelect.value);
+            });
+        }
+
+        // Bind individual tool checkboxes in Zenmen settings grid
+        var toolToggles = document.querySelectorAll('.zenmen-tool-toggle');
+        for (var tIdx = 0; tIdx < toolToggles.length; tIdx++) {
+            (function (toggleEl) {
+                toggleEl.addEventListener('change', function () {
+                    var tool = toggleEl.getAttribute('data-tool');
+                    if (tool) {
+                        setZenmenToolActive(tool, toggleEl.checked);
+                    }
+                });
+            })(toolToggles[tIdx]);
+        }
+
+        // Restore saved Zenmen mode and tool preferences
+        try {
+            var savedZenmen = localStorage.getItem('haymgraph_zenmen_mode');
+            if (savedZenmen === null) {
+                savedZenmen = localStorage.getItem('haymgraph_quick_tools');
+            }
+            setQuickToolsEnabled(savedZenmen === 'true');
+
+            var savedTools = localStorage.getItem('haymgraph_zenmen_tools');
+            if (savedTools) {
+                var parsedTools = JSON.parse(savedTools);
+                for (var toolKey in parsedTools) {
+                    if (activeZenmenTools.hasOwnProperty(toolKey)) {
+                        activeZenmenTools[toolKey] = !!parsedTools[toolKey];
+                    }
+                }
+            }
+            for (var cIdx = 0; cIdx < toolToggles.length; cIdx++) {
+                var toolName = toolToggles[cIdx].getAttribute('data-tool');
+                if (toolName && activeZenmenTools[toolName] !== undefined) {
+                    toolToggles[cIdx].checked = !!activeZenmenTools[toolName];
+                }
+            }
+            updateZenmenToolbarButtons();
+
+            var savedThirdAction = localStorage.getItem('haymgraph_third_action') || 'center-anchor';
+            setThirdAction(savedThirdAction);
+        } catch (e) {}
 
         // 12. Auto-Resizing Layout (Vertical & Horizontal)
         updateLayoutMode();
@@ -1178,6 +1423,154 @@
         }
         if (curveBox) {
             curveBox.resize();
+        }
+    }
+
+    /**
+     * Updates visibility of individual Zenmen toolbar buttons based on user settings.
+     */
+    function updateZenmenToolbarButtons() {
+        if (!quickToolsBar) return;
+        var toolBtns = quickToolsBar.querySelectorAll('.quick-tool-btn');
+        for (var i = 0; i < toolBtns.length; i++) {
+            var btn = toolBtns[i];
+            var tool = btn.getAttribute('data-tool');
+            if (tool && activeZenmenTools[tool] !== undefined) {
+                if (activeZenmenTools[tool]) {
+                    btn.classList.remove('hidden');
+                } else {
+                    btn.classList.add('hidden');
+                }
+            }
+        }
+        if (curveBox) {
+            setTimeout(function () {
+                curveBox.resize();
+            }, 30);
+        }
+    }
+
+    /**
+     * Toggles an individual Zenmen tool on or off and saves to localStorage.
+     */
+    function setZenmenToolActive(tool, isActive) {
+        if (activeZenmenTools.hasOwnProperty(tool)) {
+            activeZenmenTools[tool] = !!isActive;
+            try {
+                localStorage.setItem('haymgraph_zenmen_tools', JSON.stringify(activeZenmenTools));
+            } catch (e) {}
+            updateZenmenToolbarButtons();
+        }
+    }
+
+    /**
+     * Enables or disables the Quick Action Tools toolbar (editing jesus zenmen mode).
+     */
+    function setQuickToolsEnabled(enabled) {
+        if (!quickToolsBar) return;
+        if (enabled) {
+            quickToolsBar.classList.remove('hidden');
+            if (settingQuickToolsOptions) settingQuickToolsOptions.classList.remove('hidden');
+        } else {
+            quickToolsBar.classList.add('hidden');
+            if (settingQuickToolsOptions) settingQuickToolsOptions.classList.add('hidden');
+        }
+        if (settingQuickToolsToggle) {
+            settingQuickToolsToggle.checked = !!enabled;
+        }
+        try {
+            localStorage.setItem('haymgraph_zenmen_mode', enabled ? 'true' : 'false');
+            localStorage.setItem('haymgraph_quick_tools', enabled ? 'true' : 'false');
+        } catch (e) {}
+
+        updateZenmenToolbarButtons();
+
+        if (curveBox) {
+            setTimeout(function () {
+                curveBox.resize();
+            }, 30);
+        }
+    }
+
+    /**
+     * Configures the 3rd Quick Action Button (Center Anchor, loopOut, Camera Rig, Smart Precomp).
+     */
+    function setThirdAction(actionType) {
+        if (!THIRD_ACTION_CONFIG[actionType]) {
+            actionType = 'center-anchor';
+        }
+        currentThirdAction = actionType;
+        var cfg = THIRD_ACTION_CONFIG[actionType];
+
+        if (quickThirdLabel) quickThirdLabel.textContent = cfg.label;
+        if (quickThirdIcon) quickThirdIcon.innerHTML = cfg.svg;
+        if (btnQuickThird) btnQuickThird.setAttribute('title', cfg.title);
+
+        if (settingThirdActionSelect) {
+            settingThirdActionSelect.value = actionType;
+        }
+
+        try {
+            localStorage.setItem('haymgraph_third_action', actionType);
+        } catch (e) {}
+    }
+
+    /**
+     * Executes the currently configured 3rd action in After Effects.
+     */
+    function executeThirdAction() {
+        if (currentThirdAction === 'center-anchor') {
+            csInterface.evalScript("HaymHost.centerAnchorPoint()", function (resStr) {
+                try {
+                    var res = JSON.parse(resStr);
+                    if (res.success) {
+                        setStatus("Centered anchor on " + (res.count || 0) + " layer(s)", true);
+                    } else {
+                        setStatus(res.error || "Could not center anchor point", false);
+                    }
+                } catch (e) {
+                    setStatus("Anchor point centered", true);
+                }
+            });
+        } else if (currentThirdAction === 'loop-out') {
+            csInterface.evalScript("HaymHost.toggleLoopKeyframes()", function (resStr) {
+                try {
+                    var res = JSON.parse(resStr);
+                    if (res.success) {
+                        setStatus("Toggled loopOut (" + (res.count || 0) + " prop(s))", true);
+                    } else {
+                        setStatus(res.error || "Could not toggle loopOut", false);
+                    }
+                } catch (e) {
+                    setStatus("loopOut toggled", true);
+                }
+            });
+        } else if (currentThirdAction === 'camera-rig') {
+            csInterface.evalScript("HaymHost.addCameraRig()", function (resStr) {
+                try {
+                    var res = JSON.parse(resStr);
+                    if (res.success) {
+                        setStatus("Created 3D Camera Rig", true);
+                    } else {
+                        setStatus(res.error || "Could not create Camera Rig", false);
+                    }
+                } catch (e) {
+                    setStatus("3D Camera Rig created", true);
+                }
+            });
+        } else if (currentThirdAction === 'precompose') {
+            csInterface.evalScript("HaymHost.smartPrecompose()", function (resStr) {
+                try {
+                    var res = JSON.parse(resStr);
+                    if (res.success) {
+                        setStatus("Precomposed: " + (res.name || "Comp"), true);
+                    } else {
+                        setStatus(res.error || "Could not precompose selection", false);
+                    }
+                } catch (e) {
+                    setStatus("Precomposed selection", true);
+                }
+            });
         }
     }
 

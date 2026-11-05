@@ -82,6 +82,83 @@
                     <div id="curve-box-container" class="curve-canvas-wrapper"></div>
                 </main>
 
+                <!-- Editing Jesus Zenmen Mode Toolbar -->
+                <div id="quick-tools-bar" class="quick-tools-bar hidden" title="editing jesus zenmen mode">
+                    <button id="btn-quick-adj" data-tool="adj" class="quick-tool-btn" title="Add Adjustment Layer (Topmost selected layer, auto-trimmed to in/out bounds)" aria-label="Add Adjustment Layer">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <line x1="3" y1="21" x2="21" y2="3" />
+                            <line x1="9" y1="21" x2="21" y2="9" />
+                            <line x1="15" y1="21" x2="21" y2="15" />
+                        </svg>
+                        <span>+Adj</span>
+                    </button>
+                    <button id="btn-quick-null" data-tool="null" class="quick-tool-btn" title="Add Null (Topmost selected layer, auto-trimmed, auto-parented at math center)" aria-label="Add Center Null">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 2" />
+                            <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+                            <line x1="12" y1="1" x2="12" y2="4" />
+                            <line x1="12" y1="20" x2="12" y2="23" />
+                            <line x1="1" y1="12" x2="4" y2="12" />
+                            <line x1="20" y1="12" x2="23" y2="12" />
+                        </svg>
+                        <span>+Null</span>
+                    </button>
+                    <button id="btn-quick-third" data-tool="anchor" class="quick-tool-btn" title="Center Anchor Point (Moves anchor point to center without shifting layer position)" aria-label="Quick Action 3">
+                        <span id="quick-third-icon" class="quick-tool-icon">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="4" y="4" width="16" height="16" rx="2" stroke-width="1.8" />
+                                <circle cx="12" cy="12" r="3" stroke-width="2" />
+                                <line x1="12" y1="7" x2="12" y2="17" stroke-width="1.8" />
+                                <line x1="7" y1="12" x2="17" y2="12" stroke-width="1.8" />
+                            </svg>
+                        </span>
+                        <span id="quick-third-label">Anchor</span>
+                    </button>
+                    <button id="btn-quick-solid" data-tool="solid" class="quick-tool-btn" title="Add Solid Layer (Click for White Flash Solid, Alt+Click for Black Solid; auto-trimmed on top)" aria-label="Add Solid">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <line x1="3" y1="9" x2="21" y2="9" />
+                            <line x1="3" y1="15" x2="21" y2="15" />
+                        </svg>
+                        <span>+Solid</span>
+                    </button>
+                    <button id="btn-quick-precomp" data-tool="precomp" class="quick-tool-btn hidden" title="Smart Precompose (Precompose selected layers, auto-trimmed to in/out bounds)" aria-label="Smart Precompose">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                            <polyline points="2 17 12 22 22 17" />
+                            <polyline points="2 12 12 17 22 12" />
+                        </svg>
+                        <span>Precomp</span>
+                    </button>
+                    <button id="btn-quick-camera" data-tool="camera" class="quick-tool-btn hidden" title="Add 3D Camera Rig (+ Controller Null, auto-trimmed on top)" aria-label="Add Camera Rig">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="m22 8-6 4 6 4V8Z" />
+                            <rect x="2" y="6" width="14" height="12" rx="2" />
+                        </svg>
+                        <span>Camera</span>
+                    </button>
+                    <button id="btn-quick-loop" data-tool="loop" class="quick-tool-btn hidden" title="Toggle loopOut() Expression (Cycle / PingPong / Off)" aria-label="Toggle loopOut">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                            <path d="M3 3v5h5" />
+                            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+                            <path d="M16 21h5v-5" />
+                        </svg>
+                        <span>Loop</span>
+                    </button>
+                    <button id="btn-quick-split" data-tool="split" class="quick-tool-btn hidden" title="Split Layer at Playhead (Ctrl+Shift+D)" aria-label="Split Layer">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="6" cy="6" r="3" />
+                            <circle cx="6" cy="18" r="3" />
+                            <line x1="20" y1="4" x2="8.12" y2="15.88" />
+                            <line x1="14.47" y1="14.48" x2="20" y2="20" />
+                            <line x1="8.12" y1="8.12" x2="12" y2="12" />
+                        </svg>
+                        <span>Split</span>
+                    </button>
+                </div>
+
                 <!-- Icon Action Toolbar: Reverse, Analyze, Enter -->
                 <footer class="action-toolbar">
                     <button id="btn-reverse" class="action-icon-btn" title="Reverse Curve" aria-label="Reverse">
@@ -172,16 +249,24 @@
     <div id="settings-modal" class="modal-backdrop">
         <div class="modal-dialog">
             <div class="modal-header">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                </svg>
-                <div class="modal-title">Settings & Updates</div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3" />
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                    </svg>
+                    <div class="modal-title">Settings & Updates</div>
+                </div>
+                <button type="button" id="btn-settings-header-close" class="btn-modal-close-icon" title="Close (Esc)" aria-label="Close Settings">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body settings-form">
                 <div class="setting-row">
                     <span class="setting-label">Current Version</span>
-                    <span id="setting-version-tag" class="setting-val-badge">v1.5.1</span>
+                    <span id="setting-version-tag" class="setting-val-badge">v1.5.2</span>
                 </div>
                 <div class="setting-slider-row">
                     <div class="setting-slider-header">
@@ -202,6 +287,57 @@
                         <button type="button" class="setting-segment-btn" data-layout="vertical">Vertical</button>
                         <button type="button" class="setting-segment-btn" data-layout="horizontal">Horizontal</button>
                     </div>
+                </div>
+                <div class="setting-toggle-row">
+                    <label class="setting-toggle-label">
+                        <input type="checkbox" id="setting-quick-tools-toggle" />
+                        <span style="font-weight: 600; color: #fff;">editing jesus zenmen mode</span>
+                    </label>
+                </div>
+                <div id="setting-quick-tools-options" class="setting-zenmen-box hidden">
+                    <div class="setting-hint" style="margin-bottom: 2px;">
+                        Auto-places on topmost selected layer and autotrims to selection in/out bounds.
+                    </div>
+                    <div class="zenmen-tools-grid">
+                        <label class="zenmen-tool-check-label">
+                            <input type="checkbox" class="zenmen-tool-toggle" data-tool="adj" checked />
+                            <span>+Adj (Adjustment)</span>
+                        </label>
+                        <label class="zenmen-tool-check-label">
+                            <input type="checkbox" class="zenmen-tool-toggle" data-tool="null" checked />
+                            <span>+Null (Center & Parent)</span>
+                        </label>
+                        <label class="zenmen-tool-check-label">
+                            <input type="checkbox" class="zenmen-tool-toggle" data-tool="anchor" checked />
+                            <span>Anchor (Center Pivot)</span>
+                        </label>
+                        <label class="zenmen-tool-check-label">
+                            <input type="checkbox" class="zenmen-tool-toggle" data-tool="solid" checked />
+                            <span>+Solid (Flash / Fade)</span>
+                        </label>
+                        <label class="zenmen-tool-check-label">
+                            <input type="checkbox" class="zenmen-tool-toggle" data-tool="precomp" />
+                            <span>Precomp (Smart Precomp)</span>
+                        </label>
+                        <label class="zenmen-tool-check-label">
+                            <input type="checkbox" class="zenmen-tool-toggle" data-tool="camera" />
+                            <span>Camera (3D Rig)</span>
+                        </label>
+                        <label class="zenmen-tool-check-label">
+                            <input type="checkbox" class="zenmen-tool-toggle" data-tool="loop" />
+                            <span>Loop (loopOut Ease)</span>
+                        </label>
+                        <label class="zenmen-tool-check-label">
+                            <input type="checkbox" class="zenmen-tool-toggle" data-tool="split" />
+                            <span>Split (Cut at Playhead)</span>
+                        </label>
+                    </div>
+                    <select id="setting-third-action-select" class="setting-input" style="display: none;">
+                        <option value="center-anchor" selected>Center Anchor Point (Source Rect Math)</option>
+                        <option value="loop-out">Loop Keyframes (loopOut Cycle/PingPong)</option>
+                        <option value="camera-rig">Add 3D Camera Rig (+ Controller Null)</option>
+                        <option value="precompose">Smart Precompose Selection</option>
+                    </select>
                 </div>
                 <div class="setting-toggle-row">
                     <label class="setting-toggle-label">

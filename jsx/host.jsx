@@ -90,7 +90,7 @@ var HaymHost = (function () {
                     return true;
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
         return false;
     }
 
@@ -114,7 +114,7 @@ var HaymHost = (function () {
             if (typeof prop.keyRoving === "function") {
                 return prop.keyRoving(kIndex) === true;
             }
-        } catch (e) {}
+        } catch (e) { }
         return false;
     }
 
@@ -128,12 +128,12 @@ var HaymHost = (function () {
                 prop.setRovingAtKeyframe(kIndex, isRoving);
                 return;
             }
-        } catch (e) {}
+        } catch (e) { }
         try {
             if (typeof prop.setRovingAtKey === "function") {
                 prop.setRovingAtKey(kIndex, isRoving);
             }
-        } catch (e2) {}
+        } catch (e2) { }
     }
 
     /**
@@ -255,7 +255,7 @@ var HaymHost = (function () {
                     }
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
 
         // 2. Iterate selected layers
         try {
@@ -276,7 +276,7 @@ var HaymHost = (function () {
                     }
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
 
         return props;
     }
@@ -346,12 +346,12 @@ var HaymHost = (function () {
         try {
             setKeyRoving(prop, k1, false);
             setKeyRoving(prop, k2, false);
-        } catch (e) {}
+        } catch (e) { }
 
         try {
             prop.setInterpolationTypeAtKey(k1, KeyframeInterpolationType.BEZIER, KeyframeInterpolationType.BEZIER);
             prop.setInterpolationTypeAtKey(k2, KeyframeInterpolationType.BEZIER, KeyframeInterpolationType.BEZIER);
-        } catch (e) {}
+        } catch (e) { }
 
         var valType = prop.propertyValueType;
 
@@ -668,9 +668,9 @@ var HaymHost = (function () {
                 } else {
                     // Check if this segment differs from first curve
                     var diff = Math.abs(curCurve.x1 - firstCurve.x1) +
-                               Math.abs(curCurve.y1 - firstCurve.y1) +
-                               Math.abs(curCurve.x2 - firstCurve.x2) +
-                               Math.abs(curCurve.y2 - firstCurve.y2);
+                        Math.abs(curCurve.y1 - firstCurve.y1) +
+                        Math.abs(curCurve.x2 - firstCurve.x2) +
+                        Math.abs(curCurve.y2 - firstCurve.y2);
                     if (diff > 0.05) {
                         hasMixedCurves = true;
                     }
@@ -834,7 +834,7 @@ var HaymHost = (function () {
                     if (prop.expressionEnabled && prop.expression && prop.expression.length > 0) {
                         warnings.push("Layer '" + layer.name + "': Position had an active expression. Review separated dimensions.");
                     }
-                } catch (e) {}
+                } catch (e) { }
 
                 var selIndices = prop.selectedKeys;
                 if (!selIndices || selIndices.length === 0) continue;
@@ -850,7 +850,7 @@ var HaymHost = (function () {
                             break;
                         }
                     }
-                } catch (e) {}
+                } catch (e) { }
 
                 // 1. Record key times of the original position
                 var origKeyTimes = [];
@@ -911,6 +911,541 @@ var HaymHost = (function () {
         });
     }
 
+    /**
+     * Helper to analyze selected layers in composition:
+     * Returns the topmost selected layer (lowest index in timeline), the earliest inPoint,
+     * the latest outPoint, and whether any layer is 3D.
+     */
+    function getSelectedLayersBounds(comp) {
+        var sel = comp.selectedLayers;
+        if (!sel || sel.length === 0) {
+            return {
+                hasSelection: false,
+                topLayer: null,
+                minIn: (comp.workAreaDuration > 0 && comp.workAreaDuration < comp.duration) ? comp.workAreaStart : 0,
+                maxOut: (comp.workAreaDuration > 0 && comp.workAreaDuration < comp.duration) ? (comp.workAreaStart + comp.workAreaDuration) : comp.duration,
+                isAny3D: false,
+                layers: []
+            };
+        }
+
+        var topLayer = sel[0];
+        var minIn = sel[0].inPoint;
+        var maxOut = sel[0].outPoint;
+        var isAny3D = false;
+        var layerList = [];
+
+        for (var i = 0; i < sel.length; i++) {
+            var l = sel[i];
+            layerList.push(l);
+            if (l.index < topLayer.index) {
+                topLayer = l;
+            }
+            if (l.inPoint < minIn) minIn = l.inPoint;
+            if (l.outPoint > maxOut) maxOut = l.outPoint;
+            if (l.threeDLayer) isAny3D = true;
+        }
+
+        return {
+            hasSelection: true,
+            topLayer: topLayer,
+            minIn: minIn,
+            maxOut: maxOut,
+            isAny3D: isAny3D,
+            layers: layerList
+        };
+    }
+
+    /**
+     * Moves newly created layer directly above the topmost selected layer
+     * and autotrims to earliest start and latest end of selected layers.
+     */
+    function applyBoundsAndPlacement(comp, newLayer, bounds) {
+        if (bounds.hasSelection && bounds.topLayer) {
+            try {
+                newLayer.moveBefore(bounds.topLayer);
+            } catch (e1) {}
+
+            if (bounds.minIn < bounds.maxOut) {
+                try {
+                    newLayer.startTime = bounds.minIn;
+                    newLayer.inPoint = bounds.minIn;
+                    newLayer.outPoint = bounds.maxOut;
+                } catch (e2) {}
+            }
+        } else {
+            if (comp.workAreaDuration > 0 && comp.workAreaDuration < comp.duration) {
+                try {
+                    newLayer.startTime = comp.workAreaStart;
+                    newLayer.inPoint = comp.workAreaStart;
+                    newLayer.outPoint = comp.workAreaStart + comp.workAreaDuration;
+                } catch (e3) {}
+            }
+        }
+    }
+
+    /**
+     * Add an Adjustment Layer to the active composition.
+     * Placed right above the topmost selected layer (or at top of comp).
+     * Autotrimmed to most starting and most ending selected layer point.
+     */
+    function addAdjustmentLayer() {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ success: false, error: "No active composition." });
+        }
+
+        app.beginUndoGroup("Add Adjustment Layer");
+        try {
+            // 1. Capture selection bounds BEFORE adding solid
+            var bounds = getSelectedLayersBounds(comp);
+
+            // 2. Add solid
+            var adj = comp.layers.addSolid([1, 1, 1], "Adjustment Layer", comp.width, comp.height, comp.pixelAspect, comp.duration);
+            adj.adjustmentLayer = true;
+            adj.label = 5; // Standard AE adjustment layer color
+
+            // 3. Move directly above topmost selected layer & autotrim
+            applyBoundsAndPlacement(comp, adj, bounds);
+
+            // 4. Deselect previous, select adjustment layer
+            for (var j = 0; j < comp.numLayers; j++) {
+                comp.layer(j + 1).selected = false;
+            }
+            adj.selected = true;
+
+            app.endUndoGroup();
+            return JSON.stringify({ success: true, name: adj.name });
+        } catch (e) {
+            app.endUndoGroup();
+            return JSON.stringify({ success: false, error: e.toString() });
+        }
+    }
+
+    /**
+     * Helper to compute a layer's visual center point in composition/world coordinates.
+     */
+    function getLayerCenterCoord(layer, time) {
+        var rect = null;
+        try {
+            rect = layer.sourceRectAtTime(time, false);
+        } catch (e1) { }
+
+        var localCenter;
+        if (rect && (rect.width > 0 || rect.height > 0)) {
+            localCenter = [rect.left + rect.width / 2, rect.top + rect.height / 2];
+        } else {
+            try {
+                localCenter = layer.transform.anchorPoint.valueAtTime(time, false);
+            } catch (e2) {
+                localCenter = [0, 0];
+            }
+        }
+
+        try {
+            if (layer.threeDLayer) {
+                var z = (localCenter.length > 2 ? localCenter[2] : 0);
+                return layer.toWorld([localCenter[0], localCenter[1], z], time);
+            } else {
+                return layer.toComp([localCenter[0], localCenter[1]], time);
+            }
+        } catch (e3) {
+            try {
+                return layer.transform.position.valueAtTime(time, false);
+            } catch (e4) {
+                return [0, 0, 0];
+            }
+        }
+    }
+
+    /**
+     * Add a Null object, placed at the calculated mathematical center of selected layer(s),
+     * auto-parenting selected layers to the Null, placed right on top of topmost selected layer,
+     * and autotrimmed to the earliest starting and latest ending point.
+     */
+    function addCenterNull() {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ success: false, error: "No active composition." });
+        }
+
+        app.beginUndoGroup("Add Parented Center Null");
+        try {
+            // 1. Capture selection bounds BEFORE creating null
+            var bounds = getSelectedLayersBounds(comp);
+            var time = comp.time;
+            var nullLayer = comp.layers.addNull();
+
+            if (!bounds.hasSelection) {
+                nullLayer.name = "Null 1";
+                nullLayer.transform.position.setValue([comp.width / 2, comp.height / 2]);
+                applyBoundsAndPlacement(comp, nullLayer, bounds);
+            } else {
+                var centers = [];
+                for (var i = 0; i < bounds.layers.length; i++) {
+                    var l = bounds.layers[i];
+                    var centerPt = getLayerCenterCoord(l, time);
+                    centers.push(centerPt);
+                }
+
+                // Math: Calculate overall group center
+                var finalCenter;
+                if (centers.length === 1) {
+                    finalCenter = centers[0];
+                } else {
+                    var minX = centers[0][0], maxX = centers[0][0];
+                    var minY = centers[0][1], maxY = centers[0][1];
+                    var minZ = (centers[0].length > 2 ? centers[0][2] : 0);
+                    var maxZ = minZ;
+
+                    for (var c = 1; c < centers.length; c++) {
+                        var p = centers[c];
+                        if (p[0] < minX) minX = p[0];
+                        if (p[0] > maxX) maxX = p[0];
+                        if (p[1] < minY) minY = p[1];
+                        if (p[1] > maxY) maxY = p[1];
+                        var pz = (p.length > 2 ? p[2] : 0);
+                        if (pz < minZ) minZ = pz;
+                        if (pz > maxZ) maxZ = pz;
+                    }
+                    finalCenter = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2];
+                }
+
+                if (bounds.isAny3D) {
+                    nullLayer.threeDLayer = true;
+                    var zCoord = (finalCenter.length > 2 ? finalCenter[2] : 0);
+                    nullLayer.transform.position.setValue([finalCenter[0], finalCenter[1], zCoord]);
+                } else {
+                    nullLayer.transform.position.setValue([finalCenter[0], finalCenter[1]]);
+                }
+
+                if (bounds.layers.length === 1) {
+                    nullLayer.name = bounds.layers[0].name + " Null";
+                } else {
+                    nullLayer.name = "Controller Null";
+                }
+
+                // Move right above topmost selected layer & autotrim
+                applyBoundsAndPlacement(comp, nullLayer, bounds);
+
+                // Inherit existing parent if single layer had one
+                if (bounds.layers.length === 1 && bounds.layers[0].parent) {
+                    nullLayer.parent = bounds.layers[0].parent;
+                }
+
+                // Auto-parent selected layers to this null
+                for (var k = 0; k < bounds.layers.length; k++) {
+                    var child = bounds.layers[k];
+                    // Skip if child's parent is also in the selection
+                    var parentInSel = false;
+                    if (child.parent) {
+                        for (var pIdx = 0; pIdx < bounds.layers.length; pIdx++) {
+                            if (child.parent === bounds.layers[pIdx]) {
+                                parentInSel = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!parentInSel) {
+                        child.parent = nullLayer;
+                    }
+                }
+            }
+
+            // Select the new null
+            for (var m = 0; m < comp.numLayers; m++) {
+                comp.layer(m + 1).selected = false;
+            }
+            nullLayer.selected = true;
+
+            app.endUndoGroup();
+            return JSON.stringify({ success: true, name: nullLayer.name });
+        } catch (err) {
+            app.endUndoGroup();
+            return JSON.stringify({ success: false, error: err.toString() });
+        }
+    }
+
+    /**
+     * Add a Solid Layer (Black, White, or custom color).
+     * Placed right above topmost selected layer, auto-trimmed to minIn & maxOut.
+     */
+    function addSolidLayer(colorR, colorG, colorB, customName) {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ success: false, error: "No active composition." });
+        }
+
+        app.beginUndoGroup("Add Solid Layer");
+        try {
+            var bounds = getSelectedLayersBounds(comp);
+            var r = (typeof colorR === "number") ? colorR : 1;
+            var g = (typeof colorG === "number") ? colorG : 1;
+            var b = (typeof colorB === "number") ? colorB : 1;
+            var solidName = customName || ((r === 1 && g === 1 && b === 1) ? "White Solid" : ((r === 0 && g === 0 && b === 0) ? "Black Solid" : "Solid Layer"));
+
+            var solid = comp.layers.addSolid([r, g, b], solidName, comp.width, comp.height, comp.pixelAspect, comp.duration);
+            applyBoundsAndPlacement(comp, solid, bounds);
+
+            for (var j = 0; j < comp.numLayers; j++) {
+                comp.layer(j + 1).selected = false;
+            }
+            solid.selected = true;
+
+            app.endUndoGroup();
+            return JSON.stringify({ success: true, name: solid.name });
+        } catch (e) {
+            app.endUndoGroup();
+            return JSON.stringify({ success: false, error: e.toString() });
+        }
+    }
+
+    /**
+     * Center Anchor Point for all selected layers using sourceRect bounding math,
+     * compensating layer position so the layer does NOT jump on screen.
+     */
+    function centerAnchorPoint() {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ success: false, error: "No active composition." });
+        }
+        var layers = comp.selectedLayers;
+        if (!layers || layers.length === 0) {
+            return JSON.stringify({ success: false, error: "No layers selected to center anchor point." });
+        }
+
+        app.beginUndoGroup("Center Anchor Point");
+        var modified = 0;
+        try {
+            var time = comp.time;
+            for (var i = 0; i < layers.length; i++) {
+                var layer = layers[i];
+                if (layer.locked) continue;
+
+                var rect = null;
+                try {
+                    rect = layer.sourceRectAtTime(time, false);
+                } catch (e1) { }
+
+                if (!rect || (rect.width === 0 && rect.height === 0)) continue;
+
+                var curAnchor = layer.transform.anchorPoint.value;
+                var newAnchor = [rect.left + rect.width / 2, rect.top + rect.height / 2];
+                var deltaX = newAnchor[0] - curAnchor[0];
+                var deltaY = newAnchor[1] - curAnchor[1];
+
+                if (Math.abs(deltaX) < 0.001 && Math.abs(deltaY) < 0.001) {
+                    modified++;
+                    continue;
+                }
+
+                // Math compensation to prevent layer from jumping in comp space:
+                var newCompPos;
+                if (layer.threeDLayer) {
+                    var anchor3D = [newAnchor[0], newAnchor[1], curAnchor.length > 2 ? curAnchor[2] : 0];
+                    newCompPos = layer.toWorld(anchor3D, time);
+                    if (layer.parent) {
+                        newCompPos = layer.parent.fromWorld(newCompPos, time);
+                    }
+                    layer.transform.anchorPoint.setValue(anchor3D);
+
+                    if (layer.transform.position.dimensionsSeparated) {
+                        var tg = layer.property("ADBE Transform Group");
+                        if (tg) {
+                            var p0 = tg.property("ADBE Position_0");
+                            var p1 = tg.property("ADBE Position_1");
+                            var p2 = tg.property("ADBE Position_2");
+                            if (p0) p0.setValue(newCompPos[0]);
+                            if (p1) p1.setValue(newCompPos[1]);
+                            if (p2 && newCompPos.length > 2) p2.setValue(newCompPos[2]);
+                        }
+                    } else {
+                        layer.transform.position.setValue(newCompPos);
+                    }
+                } else {
+                    newCompPos = layer.toComp(newAnchor, time);
+                    if (layer.parent) {
+                        newCompPos = layer.parent.fromComp(newCompPos, time);
+                    }
+                    layer.transform.anchorPoint.setValue(newAnchor);
+
+                    if (layer.transform.position.dimensionsSeparated) {
+                        var tg2 = layer.property("ADBE Transform Group");
+                        if (tg2) {
+                            var px0 = tg2.property("ADBE Position_0");
+                            var px1 = tg2.property("ADBE Position_1");
+                            if (px0) px0.setValue(newCompPos[0]);
+                            if (px1) px1.setValue(newCompPos[1]);
+                        }
+                    } else {
+                        layer.transform.position.setValue([newCompPos[0], newCompPos[1]]);
+                    }
+                }
+                modified++;
+            }
+
+            app.endUndoGroup();
+            return JSON.stringify({ success: true, count: modified });
+        } catch (e) {
+            app.endUndoGroup();
+            return JSON.stringify({ success: false, error: e.toString() });
+        }
+    }
+
+    /**
+     * Toggle loopOut expression on selected properties.
+     * Cycles: loopOut("cycle") -> loopOut("pingpong") -> None
+     */
+    function toggleLoopKeyframes() {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ success: false, error: "No active composition." });
+        }
+        var props = comp.selectedProperties;
+        if (!props || props.length === 0) {
+            return JSON.stringify({ success: false, error: "No properties selected." });
+        }
+
+        app.beginUndoGroup("Toggle loopOut Expression");
+        var count = 0;
+        try {
+            for (var i = 0; i < props.length; i++) {
+                var p = props[i];
+                if (p.canSetExpression && p.numKeys > 1) {
+                    var expr = p.expression || "";
+                    if (expr.indexOf("loopOut") === -1) {
+                        p.expression = 'loopOut("cycle");';
+                        p.expressionEnabled = true;
+                        count++;
+                    } else if (expr.indexOf('"cycle"') !== -1) {
+                        p.expression = 'loopOut("pingpong");';
+                        p.expressionEnabled = true;
+                        count++;
+                    } else {
+                        p.expression = "";
+                        p.expressionEnabled = false;
+                        count++;
+                    }
+                }
+            }
+            app.endUndoGroup();
+            return JSON.stringify({ success: true, count: count });
+        } catch (e) {
+            app.endUndoGroup();
+            return JSON.stringify({ success: false, error: e.toString() });
+        }
+    }
+
+    /**
+     * Add a 3D Camera Rig: a 35mm camera parented to a 3D Controller Null.
+     * Placed right on top of topmost selected layer, auto-trimmed to selection bounds.
+     */
+    function addCameraRig() {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ success: false, error: "No active composition." });
+        }
+
+        app.beginUndoGroup("Add 3D Camera Rig");
+        try {
+            var bounds = getSelectedLayersBounds(comp);
+            var cam = comp.layers.addCamera("Camera 1", [comp.width / 2, comp.height / 2]);
+            var ctrlNull = comp.layers.addNull();
+            ctrlNull.name = "Camera Controller";
+            ctrlNull.threeDLayer = true;
+            ctrlNull.transform.position.setValue([comp.width / 2, comp.height / 2, 0]);
+            cam.parent = ctrlNull;
+
+            applyBoundsAndPlacement(comp, cam, bounds);
+            ctrlNull.moveBefore(cam);
+            if (bounds.minIn < bounds.maxOut) {
+                ctrlNull.startTime = bounds.minIn;
+                ctrlNull.inPoint = bounds.minIn;
+                ctrlNull.outPoint = bounds.maxOut;
+            }
+
+            for (var j = 0; j < comp.numLayers; j++) {
+                comp.layer(j + 1).selected = false;
+            }
+            ctrlNull.selected = true;
+
+            app.endUndoGroup();
+            return JSON.stringify({ success: true });
+        } catch (e) {
+            app.endUndoGroup();
+            return JSON.stringify({ success: false, error: e.toString() });
+        }
+    }
+
+    /**
+     * Smart Precompose: Precompose selected layers trimmed to selection bounds.
+     */
+    function smartPrecompose() {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ success: false, error: "No active composition." });
+        }
+        var bounds = getSelectedLayersBounds(comp);
+        if (!bounds.hasSelection) {
+            return JSON.stringify({ success: false, error: "No layers selected to precompose." });
+        }
+
+        app.beginUndoGroup("Pre-compose Selection");
+        try {
+            var indices = [];
+            for (var i = 0; i < bounds.layers.length; i++) {
+                indices.push(bounds.layers[i].index);
+            }
+            var name = bounds.layers[0].name + " Comp";
+            var precomp = comp.layers.precompose(indices, name, true);
+            if (bounds.minIn < bounds.maxOut) {
+                precomp.startTime = bounds.minIn;
+                precomp.inPoint = bounds.minIn;
+                precomp.outPoint = bounds.maxOut;
+            }
+            app.endUndoGroup();
+            return JSON.stringify({ success: true, name: precomp.name });
+        } catch (e) {
+            app.endUndoGroup();
+            return JSON.stringify({ success: false, error: e.toString() });
+        }
+    }
+
+    /**
+     * Split selected layer(s) at current playhead time (Ctrl+Shift+D).
+     */
+    function splitLayersAtPlayhead() {
+        var comp = app.project.activeItem;
+        if (!comp || !(comp instanceof CompItem)) {
+            return JSON.stringify({ success: false, error: "No active composition." });
+        }
+        var sel = comp.selectedLayers;
+        if (!sel || sel.length === 0) {
+            return JSON.stringify({ success: false, error: "No layers selected to split." });
+        }
+
+        app.beginUndoGroup("Split Layer at Current Time");
+        var time = comp.time;
+        var splitCount = 0;
+        try {
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                if (time > layer.inPoint && time < layer.outPoint) {
+                    var dup = layer.duplicate();
+                    layer.outPoint = time;
+                    dup.inPoint = time;
+                    dup.moveAfter(layer);
+                    splitCount++;
+                }
+            }
+            app.endUndoGroup();
+            return JSON.stringify({ success: true, count: splitCount });
+        } catch (e) {
+            app.endUndoGroup();
+            return JSON.stringify({ success: false, error: e.toString() });
+        }
+    }
+
     return {
         checkSelectionStatus: checkSelectionStatus,
         getSelectionFingerprint: getSelectionFingerprint,
@@ -918,6 +1453,14 @@ var HaymHost = (function () {
         applyBezierValues: applyBezierValues,
         analyzeSelection: analyzeSelection,
         separateAndApply: separateAndApply,
-        separateAndApplyValues: separateAndApplyValues
+        separateAndApplyValues: separateAndApplyValues,
+        addAdjustmentLayer: addAdjustmentLayer,
+        addCenterNull: addCenterNull,
+        centerAnchorPoint: centerAnchorPoint,
+        toggleLoopKeyframes: toggleLoopKeyframes,
+        addCameraRig: addCameraRig,
+        smartPrecompose: smartPrecompose,
+        addSolidLayer: addSolidLayer,
+        splitLayersAtPlayhead: splitLayersAtPlayhead
     };
 })();

@@ -13,7 +13,7 @@
     'use strict';
 
     function CSInterface() {
-        this.isCEP = (typeof window.__adobe_cep__ !== "undefined");
+        this.isCEP = (typeof window !== 'undefined' && typeof window.__adobe_cep__ !== "undefined");
     }
 
     CSInterface.THEME_COLOR_CHANGED_EVENT = "com.adobe.csxs.events.ThemeColorChanged";
@@ -23,7 +23,7 @@
      */
     CSInterface.prototype.evalScript = function (script, callback) {
         if (this.isCEP) {
-            window.__adobe_cep__.evalScript(script, callback || function () {});
+            window.__adobe_cep__.evalScript(script, callback || function () { });
         } else {
             // High-fidelity browser mock for development and preview
             setTimeout(function () {
@@ -59,6 +59,45 @@
                         keysCount: 4,
                         message: "Separated Position dimensions and applied curve to 4 segments."
                     }));
+                } else if (script.indexOf("addAdjustmentLayer") !== -1) {
+                    callback(JSON.stringify({
+                        success: true,
+                        name: "Adjustment Layer 1"
+                    }));
+                } else if (script.indexOf("addCenterNull") !== -1) {
+                    callback(JSON.stringify({
+                        success: true,
+                        name: "Controller Null"
+                    }));
+                } else if (script.indexOf("centerAnchorPoint") !== -1) {
+                    callback(JSON.stringify({
+                        success: true,
+                        count: 1
+                    }));
+                } else if (script.indexOf("toggleLoopKeyframes") !== -1) {
+                    callback(JSON.stringify({
+                        success: true,
+                        count: 1
+                    }));
+                } else if (script.indexOf("addCameraRig") !== -1) {
+                    callback(JSON.stringify({
+                        success: true
+                    }));
+                } else if (script.indexOf("smartPrecompose") !== -1) {
+                    callback(JSON.stringify({
+                        success: true,
+                        name: "Precomp 1"
+                    }));
+                } else if (script.indexOf("addSolidLayer") !== -1) {
+                    callback(JSON.stringify({
+                        success: true,
+                        name: "Solid Layer 1"
+                    }));
+                } else if (script.indexOf("splitLayersAtPlayhead") !== -1) {
+                    callback(JSON.stringify({
+                        success: true,
+                        count: 1
+                    }));
                 } else {
                     callback(JSON.stringify({ success: true, message: "OK" }));
                 }
@@ -82,7 +121,7 @@
         if (this.isCEP && window.__adobe_cep__.getHostEnvironment) {
             try {
                 return JSON.parse(window.__adobe_cep__.getHostEnvironment());
-            } catch (e) {}
+            } catch (e) { }
         }
         return {
             appName: "AEFT",
