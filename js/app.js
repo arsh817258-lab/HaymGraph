@@ -221,6 +221,17 @@
             settingVersionTag.textContent = "v" + HaymUpdater.CURRENT_VERSION;
         }
 
+        if (settingsModal) {
+            var settingsBody = settingsModal.querySelector('.modal-body');
+            if (settingsBody) {
+                settingsModal.addEventListener('wheel', function (e) {
+                    if (settingsBody.scrollHeight > settingsBody.clientHeight) {
+                        settingsBody.scrollTop += e.deltaY;
+                    }
+                }, { passive: true });
+            }
+        }
+
         // 6. Global Keyboard Shortcuts
         window.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
@@ -520,9 +531,13 @@
             setThirdAction(savedThirdAction);
         } catch (e) {}
 
-        // 12. Auto-Resizing Layout (Vertical & Horizontal)
+        // 12. Auto-Resizing Layout & Dimensions
+        updatePanelBounds();
         updateLayoutMode();
-        window.addEventListener('resize', updateLayoutMode);
+        window.addEventListener('resize', function () {
+            updatePanelBounds();
+            updateLayoutMode();
+        });
     }
 
     /**
@@ -913,8 +928,20 @@
         overshootModal.classList.remove('open');
     }
 
+    function updatePanelBounds() {
+        var h = window.innerHeight || (document.documentElement ? document.documentElement.clientHeight : 0) || 400;
+        var w = window.innerWidth || (document.documentElement ? document.documentElement.clientWidth : 0) || 300;
+        if (document.documentElement && document.documentElement.style) {
+            document.documentElement.style.setProperty('--app-height', h + 'px');
+            document.documentElement.style.setProperty('--app-width', w + 'px');
+        }
+    }
+
     function openSettingsModal() {
+        updatePanelBounds();
         settingsModal.classList.add('open');
+        var mb = settingsModal.querySelector('.modal-body');
+        if (mb) mb.scrollTop = 0;
     }
 
     function closeSettingsModal() {

@@ -108,5 +108,25 @@ test('Quick Action Tools (Editing Jesus Zenmen Mode)', async (t) => {
         assert.ok(appJs.includes('setZenmenToolActive'), 'app.js must implement setZenmenToolActive');
         assert.ok(appJs.includes('haymgraph_zenmen_tools'), 'app.js must save haymgraph_zenmen_tools');
     });
+
+    await t.test('settings modal is properly configured for compact panel scrolling and height bounds', () => {
+        const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+        const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'style.css'), 'utf8');
+        const appJs = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+
+        // HTML structure: modal-body separate from settings-form
+        assert.ok(html.includes('<div class="modal-body">'), 'index.html must have dedicated .modal-body scroll wrapper');
+        assert.ok(html.includes('<div class="settings-form">'), 'index.html must have .settings-form inside .modal-body');
+
+        // CSS constraints: never overflow panel bounds and enable scroll
+        assert.ok(css.includes('--app-height'), 'css must support --app-height fallback');
+        assert.ok(css.includes('align-items: flex-start'), 'css must align start to prevent negative space clipping');
+        assert.ok(css.includes('overflow-y: auto'), 'css must enable vertical scroll');
+        assert.ok(css.includes('.settings-form > *'), 'css must prevent form elements from squishing');
+
+        // JS logic: updatePanelBounds on load, resize, and open
+        assert.ok(appJs.includes('updatePanelBounds'), 'app.js must implement updatePanelBounds');
+        assert.ok(appJs.includes('--app-height'), 'app.js must set --app-height property');
+    });
 });
 
