@@ -1023,35 +1023,139 @@ var HaymHost = (function () {
     }
 
     /**
+     * Determines the geometric center [x, y] of a layer in its own local coordinate space.
+     * Supports Text layers, Shape layers, Footage, Solids, Precomps, Nulls, and AVLayers.
+     */
+    function getLayerContentCenter(layer, time) {
+        var center = null;
+
+        // 1. Try sourceRectAtTime (Text, Shape, and masked layers)
+        try {
+            if (typeof layer.sourceRectAtTime === "function") {
+                var rect = layer.sourceRectAtTime(time, false);
+                if (rect && (rect.width > 0 || rect.height > 0)) {
+                    center = [rect.left + rect.width / 2, rect.top + rect.height / 2];
+                }
+            }
+        } catch (e1) {}
+
+        // 2. Try source item dimensions (Solids, Footage, Precomps)
+        if (!center) {
+            try {
+                if (layer.source && layer.source.width && layer.source.height) {
+                    center = [layer.source.width / 2, layer.source.height / 2];
+                }
+            } catch (e2) {}
+        }
+
+        // 3. Try layer width/height (AVLayer, Nulls)
+        if (!center) {
+            try {
+                if (layer.width && layer.height) {
+                    center = [layer.width / 2, layer.height / 2];
+                }
+            } catch (e3) {}
+        }
+
+        return center;
+    }
+
+    /**
+     * Transforms a point in layer space to composition space in pure ExtendScript,
+     * walking up the entire parent chain with scale, rotation, and position transforms.
+     */
+    function localToCompPoint(layer, localPt, time) {
+        var curLayer = layer;
+        var pt = [localPt[0], localPt[1], (localPt.length > 2 ? localPt[2] : 0)];
+
+        while (curLayer) {
+            var anchor = [0, 0, 0];
+            try {
+                var aVal = curLayer.transform.anchorPoint.valueAtTime(time, false);
+                anchor[0] = aVal[0];
+                anchor[1] = aVal[1];
+                if (aVal.length > 2) anchor[2] = aVal[2];
+            } catch (ea) {}
+
+            var pos = [0, 0, 0];
+            try {
+                if (curLayer.transform.position.dimensionsSeparated) {
+                    var tg = curLayer.property("ADBE Transform Group");
+                    if (tg) {
+                        var p0 = tg.property("ADBE Position_0");
+                        var p1 = tg.property("ADBE Position_1");
+                        var p2 = tg.property("ADBE Position_2");
+                        if (p0) pos[0] = p0.valueAtTime(time, false);
+                        if (p1) pos[1] = p1.valueAtTime(time, false);
+                        if (p2) pos[2] = p2.valueAtTime(time, false);
+                    }
+                } else {
+                    var pVal = curLayer.transform.position.valueAtTime(time, false);
+                    pos[0] = pVal[0];
+                    pos[1] = pVal[1];
+                    if (pVal.length > 2) pos[2] = pVal[2];
+                }
+            } catch (ep) {}
+
+            var scale = [100, 100, 100];
+            try {
+                var sVal = curLayer.transform.scale.valueAtTime(time, false);
+                scale[0] = sVal[0];
+                scale[1] = sVal[1];
+                if (sVal.length > 2) scale[2] = sVal[2];
+            } catch (es) {}
+
+            var sx = (scale[0] || 100) / 100;
+            var sy = (scale[1] || 100) / 100;
+            var dx = (pt[0] - anchor[0]) * sx;
+            var dy = (pt[1] - anchor[1]) * sy;
+
+            var rot = 0;
+            try {
+                if (curLayer.transform.rotation) {
+                    rot = curLayer.transform.rotation.valueAtTime(time, false);
+                } else if (curLayer.transform.zRotation) {
+                    rot = curLayer.transform.zRotation.valueAtTime(time, false);
+                }
+            } catch (er) {}
+
+            var rad = rot * Math.PI / 180;
+            var cos = Math.cos(rad);
+            var sin = Math.sin(rad);
+
+            pt[0] = pos[0] + dx * cos - dy * sin;
+            pt[1] = pos[1] + dx * sin + dy * cos;
+            if (pos.length > 2) {
+                var sz = (scale.length > 2 ? scale[2] : 100) / 100;
+                pt[2] = pos[2] + ((pt[2] || 0) - anchor[2]) * sz;
+            }
+
+            curLayer = curLayer.parent;
+        }
+
+        return pt;
+    }
+
+    /**
      * Helper to compute a layer's visual center point in composition/world coordinates.
      */
     function getLayerCenterCoord(layer, time) {
-        var rect = null;
-        try {
-            rect = layer.sourceRectAtTime(time, false);
-        } catch (e1) { }
-
-        var localCenter;
-        if (rect && (rect.width > 0 || rect.height > 0)) {
-            localCenter = [rect.left + rect.width / 2, rect.top + rect.height / 2];
-        } else {
+        var localCenter = getLayerContentCenter(layer, time);
+        if (!localCenter) {
             try {
-                localCenter = layer.transform.anchorPoint.valueAtTime(time, false);
+                var ap = layer.transform.anchorPoint.valueAtTime(time, false);
+                localCenter = [ap[0], ap[1]];
             } catch (e2) {
                 localCenter = [0, 0];
             }
         }
 
         try {
-            if (layer.threeDLayer) {
-                var z = (localCenter.length > 2 ? localCenter[2] : 0);
-                return layer.toWorld([localCenter[0], localCenter[1], z], time);
-            } else {
-                return layer.toComp([localCenter[0], localCenter[1]], time);
-            }
+            return localToCompPoint(layer, localCenter, time);
         } catch (e3) {
             try {
-                return layer.transform.position.valueAtTime(time, false);
+                var p = layer.transform.position.valueAtTime(time, false);
+                return [p[0], p[1], p.length > 2 ? p[2] : 0];
             } catch (e4) {
                 return [0, 0, 0];
             }
@@ -1201,8 +1305,9 @@ var HaymHost = (function () {
     }
 
     /**
-     * Center Anchor Point for all selected layers using sourceRect bounding math,
-     * compensating layer position so the layer does NOT jump on screen.
+     * Center Anchor Point for all selected layers using native command and pure ExtendScript math fallback.
+     * Accurately compensates position (including separated dimensions, scale, rotation, and animated keyframes)
+     * so the layer does NOT jump or shift on the composition canvas.
      */
     function centerAnchorPoint() {
         var comp = app.project.activeItem;
@@ -1214,82 +1319,143 @@ var HaymHost = (function () {
             return JSON.stringify({ success: false, error: "No layers selected to center anchor point." });
         }
 
-        app.beginUndoGroup("Center Anchor Point");
+        var time = comp.time;
         var modified = 0;
+
+        // Step 1: Attempt native After Effects menu command (Ctrl+Alt+Home)
+        var cmdId = app.findMenuCommandId("Center Anchor Point in Layer Content");
+        if (!cmdId || cmdId === 0) {
+            cmdId = 10312; // Native command ID across After Effects versions
+        }
         try {
-            var time = comp.time;
-            for (var i = 0; i < layers.length; i++) {
-                var layer = layers[i];
-                if (layer.locked) continue;
+            if (cmdId && cmdId !== 0) {
+                app.executeCommand(cmdId);
+            }
+        } catch (cmdErr) {}
 
-                var rect = null;
-                try {
-                    rect = layer.sourceRectAtTime(time, false);
-                } catch (e1) { }
+        // Step 2: Check each selected layer. If native command didn't execute
+        // (common when CEP panel has OS focus), apply exact mathematical compensation.
+        var layersToFix = [];
+        for (var i = 0; i < layers.length; i++) {
+            var l = layers[i];
+            if (l.locked) continue;
+            var targetCenter = getLayerContentCenter(l, time);
+            if (!targetCenter) {
+                modified++;
+                continue;
+            }
+            var curAnchor = l.transform.anchorPoint.valueAtTime(time, false);
+            var dist = Math.sqrt(Math.pow(targetCenter[0] - curAnchor[0], 2) + Math.pow(targetCenter[1] - curAnchor[1], 2));
+            if (dist > 0.5) {
+                layersToFix.push({ layer: l, newAnchor: targetCenter });
+            } else {
+                modified++;
+            }
+        }
 
-                if (!rect || (rect.width === 0 && rect.height === 0)) continue;
+        if (layersToFix.length > 0) {
+            app.beginUndoGroup("Center Anchor Point");
+            try {
+                for (var j = 0; j < layersToFix.length; j++) {
+                    var item = layersToFix[j];
+                    var layer = item.layer;
+                    var newAnchor = item.newAnchor;
+                    var curAnchor = layer.transform.anchorPoint.valueAtTime(time, false);
 
-                var curAnchor = layer.transform.anchorPoint.value;
-                var newAnchor = [rect.left + rect.width / 2, rect.top + rect.height / 2];
-                var deltaX = newAnchor[0] - curAnchor[0];
-                var deltaY = newAnchor[1] - curAnchor[1];
+                    var deltaX = newAnchor[0] - curAnchor[0];
+                    var deltaY = newAnchor[1] - curAnchor[1];
 
-                if (Math.abs(deltaX) < 0.001 && Math.abs(deltaY) < 0.001) {
-                    modified++;
-                    continue;
-                }
+                    // Scale compensation
+                    var scale = [100, 100, 100];
+                    try {
+                        scale = layer.transform.scale.valueAtTime(time, false);
+                    } catch (es) {}
+                    var sx = (scale[0] || 100) / 100;
+                    var sy = (scale[1] || 100) / 100;
+                    var scaledDeltaX = deltaX * sx;
+                    var scaledDeltaY = deltaY * sy;
 
-                // Math compensation to prevent layer from jumping in comp space:
-                var newCompPos;
-                if (layer.threeDLayer) {
-                    var anchor3D = [newAnchor[0], newAnchor[1], curAnchor.length > 2 ? curAnchor[2] : 0];
-                    newCompPos = layer.toWorld(anchor3D, time);
-                    if (layer.parent) {
-                        newCompPos = layer.parent.fromWorld(newCompPos, time);
+                    // Rotation compensation
+                    var rot = 0;
+                    try {
+                        if (layer.transform.rotation) {
+                            rot = layer.transform.rotation.valueAtTime(time, false);
+                        } else if (layer.transform.zRotation) {
+                            rot = layer.transform.zRotation.valueAtTime(time, false);
+                        }
+                    } catch (er) {}
+                    var rad = rot * Math.PI / 180;
+                    var cos = Math.cos(rad);
+                    var sin = Math.sin(rad);
+                    var shiftX = scaledDeltaX * cos - scaledDeltaY * sin;
+                    var shiftY = scaledDeltaX * sin + scaledDeltaY * cos;
+
+                    // 1. Update Anchor Point (preserving keyframes if present)
+                    var anchorProp = layer.transform.anchorPoint;
+                    if (anchorProp.numKeys > 0) {
+                        for (var k = 1; k <= anchorProp.numKeys; k++) {
+                            var aVal = anchorProp.keyValue(k);
+                            var newAVal = [aVal[0] + deltaX, aVal[1] + deltaY];
+                            if (aVal.length > 2) newAVal.push(aVal[2]);
+                            anchorProp.setValueAtKey(k, newAVal);
+                        }
+                    } else {
+                        var finalAnchor = [newAnchor[0], newAnchor[1]];
+                        if (curAnchor.length > 2) finalAnchor.push(curAnchor[2]);
+                        anchorProp.setValue(finalAnchor);
                     }
-                    layer.transform.anchorPoint.setValue(anchor3D);
 
-                    if (layer.transform.position.dimensionsSeparated) {
+                    // 2. Compensate Position (so layer visual footprint does NOT move)
+                    var posProp = layer.transform.position;
+                    if (posProp.dimensionsSeparated) {
                         var tg = layer.property("ADBE Transform Group");
                         if (tg) {
                             var p0 = tg.property("ADBE Position_0");
                             var p1 = tg.property("ADBE Position_1");
-                            var p2 = tg.property("ADBE Position_2");
-                            if (p0) p0.setValue(newCompPos[0]);
-                            if (p1) p1.setValue(newCompPos[1]);
-                            if (p2 && newCompPos.length > 2) p2.setValue(newCompPos[2]);
+                            if (p0) {
+                                if (p0.numKeys > 0) {
+                                    for (var k0 = 1; k0 <= p0.numKeys; k0++) {
+                                        p0.setValueAtKey(k0, p0.keyValue(k0) + shiftX);
+                                    }
+                                } else {
+                                    p0.setValue(p0.value + shiftX);
+                                }
+                            }
+                            if (p1) {
+                                if (p1.numKeys > 0) {
+                                    for (var k1 = 1; k1 <= p1.numKeys; k1++) {
+                                        p1.setValueAtKey(k1, p1.keyValue(k1) + shiftY);
+                                    }
+                                } else {
+                                    p1.setValue(p1.value + shiftY);
+                                }
+                            }
                         }
                     } else {
-                        layer.transform.position.setValue(newCompPos);
-                    }
-                } else {
-                    newCompPos = layer.toComp(newAnchor, time);
-                    if (layer.parent) {
-                        newCompPos = layer.parent.fromComp(newCompPos, time);
-                    }
-                    layer.transform.anchorPoint.setValue(newAnchor);
-
-                    if (layer.transform.position.dimensionsSeparated) {
-                        var tg2 = layer.property("ADBE Transform Group");
-                        if (tg2) {
-                            var px0 = tg2.property("ADBE Position_0");
-                            var px1 = tg2.property("ADBE Position_1");
-                            if (px0) px0.setValue(newCompPos[0]);
-                            if (px1) px1.setValue(newCompPos[1]);
+                        if (posProp.numKeys > 0) {
+                            for (var kp = 1; kp <= posProp.numKeys; kp++) {
+                                var pVal = posProp.keyValue(kp);
+                                var newPVal = [pVal[0] + shiftX, pVal[1] + shiftY];
+                                if (pVal.length > 2) newPVal.push(pVal[2]);
+                                posProp.setValueAtKey(kp, newPVal);
+                            }
+                        } else {
+                            var curP = posProp.value;
+                            var finalP = [curP[0] + shiftX, curP[1] + shiftY];
+                            if (curP.length > 2) finalP.push(curP[2]);
+                            posProp.setValue(finalP);
                         }
-                    } else {
-                        layer.transform.position.setValue([newCompPos[0], newCompPos[1]]);
                     }
+                    modified++;
                 }
-                modified++;
+                app.endUndoGroup();
+            } catch (errUndo) {
+                app.endUndoGroup();
+                return JSON.stringify({ success: false, error: errUndo.toString() });
             }
-
-            app.endUndoGroup();
-            return JSON.stringify({ success: true, count: modified });
-        } catch (e) {
-            app.endUndoGroup();
-            return JSON.stringify({ success: false, error: e.toString() });
         }
+
+        return JSON.stringify({ success: true, count: modified });
     }
 
     /**

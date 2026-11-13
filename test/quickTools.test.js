@@ -43,6 +43,10 @@ test('Quick Action Tools (Editing Jesus Zenmen Mode)', async (t) => {
         // Verify placement & autotrim helper functions
         assert.ok(hostJsx.includes('function getSelectedLayersBounds('), 'host.jsx must implement getSelectedLayersBounds');
         assert.ok(hostJsx.includes('function applyBoundsAndPlacement('), 'host.jsx must implement applyBoundsAndPlacement');
+        assert.ok(hostJsx.includes('function getLayerContentCenter('), 'host.jsx must implement getLayerContentCenter');
+        assert.ok(hostJsx.includes('function localToCompPoint('), 'host.jsx must implement localToCompPoint');
+        assert.ok(!hostJsx.includes('layer.toComp('), 'host.jsx must not call layer.toComp which is undefined in ExtendScript');
+        assert.ok(!hostJsx.includes('layer.toWorld('), 'host.jsx must not call layer.toWorld which is undefined in ExtendScript');
 
         // Verify functions are implemented
         assert.ok(hostJsx.includes('function addAdjustmentLayer('), 'host.jsx must implement addAdjustmentLayer');

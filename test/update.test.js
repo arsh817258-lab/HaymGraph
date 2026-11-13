@@ -13,7 +13,7 @@ test('HaymUpdater version comparison and configuration', async (t) => {
     });
 
     await t.test('Defaults and constant versions are defined', () => {
-        assert.equal(HaymUpdater.CURRENT_VERSION, '1.5.2');
+        assert.equal(HaymUpdater.CURRENT_VERSION, '1.5.3');
         assert.ok(HaymUpdater.DEFAULT_REPO.length > 0);
         assert.ok(Array.isArray(HaymUpdater.DEFAULT_EXTENSION_FILES));
         assert.ok(HaymUpdater.DEFAULT_EXTENSION_FILES.includes('index.html'));
